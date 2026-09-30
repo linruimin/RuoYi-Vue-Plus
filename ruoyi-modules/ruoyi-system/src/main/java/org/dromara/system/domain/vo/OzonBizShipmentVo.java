@@ -1,0 +1,110 @@
+package org.dromara.system.domain.vo;
+import lombok.Data;
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import io.github.linpeilie.annotations.AutoMapper;
+import org.dromara.system.domain.OzonBizShipment;
+/** 出货展示对象。 */
+@Data @AutoMapper(target=OzonBizShipment.class)
+public class OzonBizShipmentVo implements Serializable {
+/** 原视图的产品编号。 */
+private Long productNo;
+/** 关联产品名称。 */
+private String productName;
+/** 订单付款时间，用于原视图多字段排序。 */
+private LocalDateTime orderPaidAt;
+/** 产品后台售价。 */
+private BigDecimal backendPrice;
+/** 订单装箱总数。 */
+private BigDecimal orderPackedQty;
+/** 记录ID。 */
+private Long id;
+/** 来源记录ID。 */
+private String feishuRecordId;
+/** 出货编号。 */
+private Long shipmentNo;
+/** 进货订单。 */
+private Long purchaseId;
+/** 店铺。 */
+private Long shopId;
+/** 物流方式。 */
+private String logisticsMethod;
+/** 货物情况。 */
+private String goodsStatus;
+/** 箱规。 */
+private String boxSpec;
+/** 箱数。 */
+private Integer boxes;
+/** 每箱数量。 */
+private BigDecimal perBoxQty;
+/** 单箱重/kg。 */
+private BigDecimal boxWeight;
+/** 入仓单号。 */
+private String warehouseInNo;
+/** 跨境物流唛。 */
+private String shippingMark;
+/** 单箱打包费用。 */
+private BigDecimal perBoxPackingFee;
+/** 单箱店铺费用+购买费用。 */
+private BigDecimal perBoxShopBuyFee;
+/** 单箱取货送仓费用。 */
+private BigDecimal perBoxPickupFee;
+/** 跨境运输费用/美元/kg。 */
+private BigDecimal crossRateUsdPerKg;
+/** 出货时间。 */
+private LocalDateTime shippedAt;
+/** 入仓时间。 */
+private LocalDateTime warehouseInAt;
+/** 创建时间。 */
+private LocalDateTime createdAt;
+/** 更新时间。 */
+private LocalDateTime updatedAt;
+/** 单箱体积/m3（只读）。 */
+private BigDecimal calc0;
+/** 总数（只读）。 */
+private BigDecimal calc1;
+/** 总箱重/kg（只读）。 */
+private BigDecimal calc2;
+/** 单箱跨境运输费用（只读）。 */
+private BigDecimal calc3;
+/** 单个跨境运输费用（只读）。 */
+private BigDecimal calc4;
+/** 单个打包费用（只读）。 */
+private BigDecimal calc5;
+/** 单个店铺费用+购买费用（只读）。 */
+private BigDecimal calc6;
+/** 单个取货送仓费用（只读）。 */
+private BigDecimal calc7;
+/** 每包成本（只读）。 */
+private BigDecimal calc8;
+/** 预计到手人民币（只读）。 */
+private BigDecimal calc9;
+/** 单体积入仓送仓费用（只读）。 */
+private BigDecimal calc10;
+/** 单箱入仓送仓费用（只读）。 */
+private BigDecimal calc11;
+/** 单个入仓送仓费用（只读）。 */
+private BigDecimal calc12;
+/** 单箱跨境运输+入仓送仓费用（只读）。 */
+private BigDecimal calc13;
+/** 合计成本（只读）。 */
+private BigDecimal calc14;
+/** 密度（只读）。 */
+private BigDecimal calc15;
+/** 总箱体积/m3（只读）。 */
+private BigDecimal calc16;
+/** 总合计成本（只读）。 */
+private BigDecimal calc17;
+/** 预计利润（只读）。 */
+private BigDecimal calc18;
+/** 预计倍数（只读）。 */
+private BigDecimal calc19;
+private String purchaseIdLabel;
+private String shopIdLabel;
+private java.util.List<Long> logisticsFeeIds;
+private String logisticsFeeIdsLabel;
+private String revision;
+/** 附件表中的公开文件信息，仅用于图片预览。 */
+private String attachmentJson;
+}

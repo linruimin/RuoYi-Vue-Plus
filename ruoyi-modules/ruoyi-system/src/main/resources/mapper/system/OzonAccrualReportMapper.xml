@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="org.dromara.system.mapper.OzonAccrualReportMapper">
+    <sql id="summaryQuery">
+        SELECT MIN(row_id) AS row_id, accrual_id,
+               MIN(NULLIF(TRIM(product_name), '')) AS product_name,
+               MIN(accrual_date) AS first_accrual_date,
+               MAX(accrual_date) AS accrual_date,
+               SUM(CASE WHEN total_amount_rub &gt; 0 THEN total_amount_rub ELSE 0 END) AS positive_amount_rub,
+               SUM(CASE WHEN total_amount_rub &lt; 0 THEN total_amount_rub ELSE 0 END) AS negative_amount_rub,
+               SUM(total_amount_rub) AS total_amount_rub,
+               (SUM(total_amount_rub) - SUM(CASE WHEN total_amount_rub &gt; 0 THEN total_amount_rub ELSE 0 END) * 0.075) AS after_tax_amount_rub,
+               (SUM(total_amount_rub) - SUM(CASE WHEN total_amount_rub &gt; 0 THEN total_amount_rub ELSE 0 END) * 0.075) * 0.075 AS total_amount_cny,
+               COUNT(*) AS record_count
+        FROM ozon_accruals
+        <where>
+            accrual_id IS NOT NULL AND TRIM(accrual_id) &lt;&gt; ''
+            <if test="q.accrualId != null and q.accrualId != ''">
+                AND accrual_id = #{q.accrualId}
+            </if>
+        </where>
+        GROUP BY accrual_id
+        <trim prefix="HAVING" prefixOverrides="AND">
+            <if test="q.startDate != null">AND MAX(accrual_date) &gt;= #{q.startDate}</if>
+            <if test="q.endDate != null">AND MAX(accrual_date) &lt;= #{q.endDate}</if>
+        </trim>
+    </sql>
+    <select id="selectSummary" resultType="org.dromara.system.domain.vo.OzonAccrualSummaryVo">
+        <include refid="summaryQuery" />
+    </select>
+    <select id="selectSalesTrend" resultType="org.dromara.system.domain.vo.OzonProductSalesTrendVo">
+        SELECT COALESCE(CONCAT('sku:', NULLIF(TRIM(a.seller_sku), '')),
+                        CONCAT('ozon:', NULLIF(TRIM(a.ozon_sku), '')),
+                        CONCAT('name:', NULLIF(TRIM(a.product_name), '')), 'unknown') AS product_key,
+               COALESCE(MAX(NULLIF(TRIM(a.product_name), '')), '未标注商品') AS product_name,
+               MAX(NULLIF(TRIM(a.seller_sku), '')) AS seller_sku,
+               COALESCE(DATE_FORMAT(s.accrual_date, '%Y-%m'), '未知月份') AS report_month,
+               SUM(a.total_amount_rub) AS sales_amount_rub
+        FROM ozon_accruals a
+        INNER JOIN (<include refid="summaryQuery" />) s ON s.accrual_id = a.accrual_id
+        WHERE a.total_amount_rub &gt; 0 AND s.total_amount_rub &lt;&gt; 0
+        GROUP BY product_key, report_month
+        ORDER BY report_month, product_key
+    </select>
+    <sql id="salesProductKey">
+        COALESCE(CONCAT('sku:', NULLIF(TRIM(a.seller_sku), '')),
+                 CONCAT('ozon:', NULLIF(TRIM(a.ozon_sku), '')),
+                 CONCAT('name:', NULLIF(TRIM(a.product_name), '')), 'unknown')
+    </sql>
+    <sql id="productSales">
+        SELECT MIN(a.row_id) AS row_id,
+               <include refid="salesProductKey" /> AS product_key,
+               COALESCE(MAX(NULLIF(TRIM(a.product_name), '')), '未标注商品') AS product_name,
+               MAX(NULLIF(TRIM(a.seller_sku), '')) AS seller_sku,
+               a.accrual_id,
+               COALESCE(MIN(CASE WHEN a.accrual_type = '销售收入' THEN a.order_accepted_or_service_date END),
+                        MIN(a.order_accepted_or_service_date), MIN(a.accrual_date)) AS sale_date,
+               MAX(a.accrual_date) AS accrual_date,
+               SUM(a.total_amount_rub) AS sales_amount_rub
+        FROM ozon_accruals a
+        INNER JOIN (<include refid="summaryQuery" />) s ON s.accrual_id = a.accrual_id
+        WHERE a.total_amount_rub &gt; 0 AND s.total_amount_rub &lt;&gt; 0
+        <if test="q.productKey != null and q.productKey != ''">
+            AND <include refid="salesProductKey" /> = #{q.productKey}
+        </if>
+        GROUP BY product_key, a.accrual_id
+    </sql>
+    <select id="selectSalesProducts" resultType="org.dromara.system.domain.vo.OzonSalesProductVo">
+        SELECT product_key, MAX(product_name) AS product_name, MAX(seller_sku) AS seller_sku,
+               COUNT(*) AS sale_count, SUM(sales_amount_rub) AS sales_amount_rub
+        FROM (<include refid="productSales" />) sales
+        GROUP BY product_key
+        ORDER BY sale_count DESC, product_key
+    </select>
+    <select id="selectSalesTransactions" resultType="org.dromara.system.domain.vo.OzonProductSaleVo">
+        <include refid="productSales" />
+        ORDER BY sale_date IS NULL, sale_date, row_id
+    </select>
+</mapper>

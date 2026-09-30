@@ -1,3 +1,4 @@
+SET NAMES utf8mb4;
 -- ----------------------------
 -- 0、warm-flow-all.sql，地址：https://gitee.com/dromara/warm-flow/blob/master/sql/mysql/warm-flow-all.sql
 -- ----------------------------
