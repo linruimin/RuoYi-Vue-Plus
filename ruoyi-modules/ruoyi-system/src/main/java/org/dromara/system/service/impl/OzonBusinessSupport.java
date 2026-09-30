@@ -3,7 +3,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import org.dromara.common.core.exception.ServiceException;
+import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
+import tools.jackson.core.type.TypeReference;
 import org.dromara.system.domain.bo.OzonBusinessQuery;
 import org.dromara.system.mapper.OzonBusinessRelationMapper;
 import org.dromara.system.mapper.OzonBusinessRemovedFieldMapper;
@@ -129,6 +131,7 @@ auto.putAll(Map.of("product","product_no","replenishment","replenish_no","shipme
    if(numeric.get(t).contains(e.getKey())){try{w.eq(column,new BigDecimal(value));}catch(NumberFormatException ex){throw new ServiceException("数字筛选格式错误");}}
    else w.eq(column,value);
   }
+  if(q.getConditions()!=null&&!q.getConditions().isBlank())applyConditions(w,t,cols,q.getConditions(),q.getConjunction());
   if(Boolean.TRUE.equals(q.getManualOrder())){
    if(q.getGroupFields()!=null&&!q.getGroupFields().isBlank()||q.getSortFields()!=null&&!q.getSortFields().isBlank())throw new ServiceException("手动顺序不能与分组或字段排序同时使用");
    w.orderByAsc("COALESCE((SELECT position_key FROM ozon_business_grid_metadata pos WHERE pos.table_name='"+t+"' AND pos.item_kind='row' AND pos.item_key=CAST(b.id AS CHAR)),-CAST(b.id AS DECIMAL(40,20)))");
@@ -142,6 +145,60 @@ auto.putAll(Map.of("product","product_no","replenishment","replenish_no","shipme
   String order=cols.get(sort);if(order==null)throw new ServiceException("不支持的排序字段");
   boolean asc="asc".equalsIgnoreCase(page.getIsAsc())||"ascending".equalsIgnoreCase(page.getIsAsc());
   w.orderBy(true,asc,order);if(!sort.equals("id"))w.orderByDesc("b.id");return w;
+ }
+ /** 多维表格风格的筛选：支持 是/不是/包含/不包含/为空/不为空/大于(等于)/小于(等于)，多条按 且/或 组合。 */
+ private static final Set<String> conditionOps=Set.of("is","isNot","contains","notContains","isEmpty","isNotEmpty","gt","gte","lt","lte");
+ private <T> void applyConditions(QueryWrapper<T> w,String t,Map<String,String> cols,String json,String conjunction){
+  List<Map<String,String>> raw;
+  try{raw=JsonUtils.parseObject(json,new TypeReference<List<Map<String,String>>>(){});}catch(Exception ex){throw new ServiceException("筛选条件格式错误");}
+  if(raw==null||raw.isEmpty())return;
+  if(raw.size()>40)throw new ServiceException("筛选条件过多");
+  var list=new ArrayList<Map<String,String>>();
+  for(var item:raw){
+   if(item==null)continue;
+   String field=item.get("field"),op=item.get("operator"),value=item.get("value");
+   if(field==null||field.isBlank())throw new ServiceException("筛选条件缺少字段");
+   if(cols.get(field)==null)throw new ServiceException("未知筛选字段");
+   if(op==null||op.isBlank())op="is";
+   if(!conditionOps.contains(op))throw new ServiceException("不支持的筛选条件");
+   if(op.equals("isEmpty")||op.equals("isNotEmpty"))value="";
+   else{
+    if(value==null||value.isBlank())continue;
+    if(value.length()>1000)throw new ServiceException("筛选内容过长");
+   }
+   list.add(Map.of("field",field,"operator",op,"value",value==null?"":value));
+  }
+  if(list.isEmpty())return;
+  boolean or="or".equalsIgnoreCase(conjunction==null?"":conjunction.trim());
+  w.and(outer->{
+   for(int i=0;i<list.size();i++){
+    if(or&&i>0)outer.or();
+    var item=list.get(i);
+    applyCondition(outer,t,cols,item.get("field"),item.get("operator"),item.get("value"));
+   }
+  });
+ }
+ private <T> void applyCondition(QueryWrapper<T> w,String t,Map<String,String> cols,String field,String op,String value){
+  String col=cols.get(field);
+  boolean numericField=numeric.get(t)!=null&&numeric.get(t).contains(field);
+  boolean dateField=dates.get(t)!=null&&dates.get(t).contains(field);
+  switch(op){
+   case "isEmpty" -> { if(numericField||dateField)w.isNull(col); else w.and(x->x.isNull(col).or().eq(col,"")); }
+   case "isNotEmpty" -> { if(numericField||dateField)w.isNotNull(col); else w.and(x->x.isNotNull(col).ne(col,"")); }
+   case "is" -> w.eq(col,conditionValue(value,numericField&&!dateField));
+   case "isNot" -> w.ne(col,conditionValue(value,numericField&&!dateField));
+   case "contains" -> w.like(col,value);
+   case "notContains" -> w.notLike(col,value);
+   case "gt" -> w.gt(col,conditionValue(value,numericField&&!dateField));
+   case "gte" -> w.ge(col,conditionValue(value,numericField&&!dateField));
+   case "lt" -> w.lt(col,conditionValue(value,numericField&&!dateField));
+   case "lte" -> w.le(col,conditionValue(value,numericField&&!dateField));
+   default -> throw new ServiceException("不支持的筛选条件");
+  }
+ }
+ private Object conditionValue(String value,boolean numericField){
+  if(!numericField)return value;
+  try{return new BigDecimal(value);}catch(NumberFormatException ex){throw new ServiceException("数字筛选格式错误");}
  }
  /** 按直接归属或已有业务关联限定店铺；物流商为共用资料。 */
  private String shopPredicate(String t,String alias){

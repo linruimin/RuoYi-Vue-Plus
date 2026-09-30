@@ -18,4 +18,8 @@ import java.util.*;
  @Size(max=200) private String keyword;
  @Size(max=40) private Map<String,String> filters=new HashMap<>();
  @Size(max=40) private Map<String,String> ends=new HashMap<>();
+ /** 多维表格风格的筛选条件，JSON 数组，元素形如 {"field":"物流方式","operator":"is","value":"立德"}。 */
+ @Size(max=4000) private String conditions;
+ /** 多条件之间的关系：and（且，默认）或 or（或）。 */
+ @Size(max=8) private String conjunction;
 }
