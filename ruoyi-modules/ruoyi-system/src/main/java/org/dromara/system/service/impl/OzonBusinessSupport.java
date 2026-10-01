@@ -271,6 +271,8 @@ auto.putAll(Map.of("product","product_no","replenishment","replenish_no","shipme
   table(t);if(id==null||mapper.lockRow(t,id)==null)throw new ServiceException("记录不存在或已删除");
   if(!revision(t,id).equals(expected))throw new ServiceException("记录已被修改，请刷新后重新编辑");
  }
+ /** 自动编号字段（数据库列名），新增行预览时使用；没有自动编号的表返回 null。 */
+ public String numberColumn(String t){table(t);return auto.get(t);}
  public Long nextNumber(String t,String field) {
   table(t);if(!Objects.equals(auto.get(t),field))throw new ServiceException("不支持的编号");
   Long previous=mapper.lastNumber(t,field);
