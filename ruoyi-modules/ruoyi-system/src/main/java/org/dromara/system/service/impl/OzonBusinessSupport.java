@@ -2,6 +2,7 @@ package org.dromara.system.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.dynamic.datasource.annotation.DS;
 import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
@@ -15,7 +16,7 @@ import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 /** 业务表共用的字段白名单、关联完整性和并发检查。 */
-@Component @RequiredArgsConstructor
+@Component @RequiredArgsConstructor @DS("ozon")
 public class OzonBusinessSupport {
  private final OzonBusinessRelationMapper mapper;
  private final OzonBusinessRemovedFieldMapper removedMapper;
