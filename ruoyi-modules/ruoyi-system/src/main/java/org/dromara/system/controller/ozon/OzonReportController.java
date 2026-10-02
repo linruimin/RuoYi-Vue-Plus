@@ -41,6 +41,13 @@ public class OzonReportController extends BaseController {
         return R.ok(reportService.supply(query, page));
     }
 
+    /** 退货报表：按退货月份 × SKU 汇总退货件数、费用与退货率。 */
+    @SaCheckPermission("ozon:report:list")
+    @GetMapping("/returns-report/list")
+    public R<PageResult<OzonReturnsReportVo>> returnsReport(@Validated OzonReportQuery query, PageQuery page) {
+        return R.ok(reportService.returnsReport(query, page));
+    }
+
     /** 按费用编号查看正负原始明细。 */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/accruals/lines")

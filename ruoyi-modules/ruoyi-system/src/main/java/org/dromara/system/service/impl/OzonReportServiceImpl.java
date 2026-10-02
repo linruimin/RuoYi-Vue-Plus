@@ -30,6 +30,7 @@ public class OzonReportServiceImpl implements IOzonReportService {
     private final OzonMonthlyReportMapper monthlyMapper;
     private final OzonAccrualReportMapper accrualMapper;
     private final OzonSupplyReportMapper supplyMapper;
+    private final OzonReturnsReportMapper returnsReportMapper;
     private final OzonBizShopMapper shopMapper;
 
     private static final Set<String> MONTHLY_SORT = Set.of("rowId", "reportMonth", "sellerSku", "ozonSku",
@@ -47,6 +48,10 @@ public class OzonReportServiceImpl implements IOzonReportService {
     private static final Set<String> SUPPLY_SORT = Set.of("id", "orderId", "applicationNo", "deliveryType",
         "status", "shipmentDate", "shipmentTime", "storageCluster", "dispatchPoint", "completionDate",
         "deliveryId", "productName", "itemCode", "sku", "liquidity", "quantity", "volume");
+    private static final Set<String> RETURNS_SORT = Set.of("reportMonth", "shopId", "shopName", "articleNo", "sku",
+        "localProductName", "ozonProductName", "shipmentCount", "returnQty", "processedCount", "pendingCount",
+        "disposalCount", "soldUnits", "returnRate", "storageFeeRub", "disposalFeeRub", "maxPriceRub",
+        "avgStorageDays", "firstReturnDate", "lastReturnDate");
 
     @Override
     public PageResult<OzonMonthlyReportVo> monthly(OzonReportQuery q, PageQuery input) {
@@ -129,6 +134,29 @@ public class OzonReportServiceImpl implements IOzonReportService {
         // 字段由sortField白名单映射，表达式与方向均为服务端固定值。
         w.last("ORDER BY " + grouping + expression + (ascending(input) ? " ASC" : " DESC") + ", id DESC");
         Page<OzonSupplyReportVo> result = supplyMapper.selectViewPage(page, w);
+        return PageResult.build(result.getRecords(), result.getTotal());
+    }
+
+    @Override
+    public PageResult<OzonReturnsReportVo> returnsReport(OzonReportQuery q, PageQuery input) {
+        var w = new QueryWrapper<OzonBizReturns>();
+        // 外层同时挂了 r（汇总子查询）与 p_view（product），article_no / sku / shop_id 都重名，
+        // 必须用限定列名，否则报 "Column 'xxx' in where clause is ambiguous"。
+        if (StringUtils.isNotBlank(q.getSellerSku())) w.apply("r.article_no = {0}", q.getSellerSku());
+        if (StringUtils.isNotBlank(q.getOzonSku())) w.apply("r.sku = {0}", q.getOzonSku());
+        if (StringUtils.isNotBlank(q.getProductName())) w.apply("r.ozon_product_name LIKE CONCAT('%', {0}, '%')", q.getProductName());
+        if (q.getReportMonth() != null) w.apply("r.report_month = {0}", q.getReportMonth().withDayOfMonth(1).toString());
+        if (q.getScopeShopId() != null) w.apply("r.shop_id = {0}", q.getScopeShopId());
+        boolean sku = "sku".equals(q.getGroupBy());
+        String group = sku ? "sku" : "report_month";
+        String sort = sortField(input, RETURNS_SORT, "returnQty");
+        Page<OzonReturnsReportVo> page = boundedPage(input);
+        // 分组键始终优先，使跨页排序也保持同组相邻。
+        boolean grouped = !"none".equals(q.getGroupBy());
+        if (grouped) page.addOrder(order(group, q.getGroupDesc() != null ? !q.getGroupDesc() : group.equals(sort) ? ascending(input) : sku));
+        if (!grouped || !group.equals(sort)) page.addOrder(order(sort, ascending(input)));
+        page.addOrder(OrderItem.desc("report_month"));
+        Page<OzonReturnsReportVo> result = returnsReportMapper.selectReportPage(page, w);
         return PageResult.build(result.getRecords(), result.getTotal());
     }
 

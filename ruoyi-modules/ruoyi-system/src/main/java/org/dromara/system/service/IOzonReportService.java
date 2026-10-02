@@ -15,6 +15,8 @@ public interface IOzonReportService {
     PageResult<OzonAccrualReportVo> accrualLines(OzonReportQuery query, PageQuery page);
     /** 查询已完成的交货申请商品明细。 */
     PageResult<OzonSupplyReportVo> supply(OzonReportQuery query, PageQuery page);
+    /** 按「退货月份 × SKU」汇总退货件数、费用与退货率。 */
+    PageResult<OzonReturnsReportVo> returnsReport(OzonReportQuery query, PageQuery page);
     /** 查询当前费用视图全部结果的产品月度销售趋势，不受分页影响。 */
     java.util.List<OzonProductSalesTrendVo> salesTrend(OzonReportQuery query);
     /** 当前费用筛选范围内的产品选项。 */
