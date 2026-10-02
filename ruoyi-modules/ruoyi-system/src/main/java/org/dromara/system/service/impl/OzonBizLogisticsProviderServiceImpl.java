@@ -36,7 +36,7 @@ public class OzonBizLogisticsProviderServiceImpl implements IOzonBizLogisticsPro
  public Long insertByBo(OzonBizLogisticsProviderBo bo) {
   var entity=MapstructUtils.convert(bo,OzonBizLogisticsProvider.class);entity.setId(null); entity.setFeishuRecordId("local_"+java.util.UUID.randomUUID().toString().replace("-","").substring(0,26)); entity.setCode(support.nextNumber("logistics_provider","code"));
   support.validate("logistics_provider",entity,null,null);
-  mapper.insert(entity);support.clearRemovedAfterWrite("logistics_provider",entity.getId());support.saveRelations("logistics_provider",entity.getId(),null);return entity.getId();
+  mapper.insert(entity);support.clearRemovedAfterWrite("logistics_provider",entity.getId());support.saveRelations("logistics_provider",entity.getId(),null);support.saveAttachments("logistics_provider",entity.getFeishuRecordId(),"跨境运费",bo.getAttachments());return entity.getId();
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean updateByBo(OzonBizLogisticsProviderBo bo) {
@@ -50,7 +50,7 @@ entity.setBank(bo.getBank());
 entity.setSystem(bo.getSystem());
 entity.setCustomerCode(bo.getCustomerCode());
   support.validate("logistics_provider",entity,bo.getId(),null);mapper.updateById(entity);support.clearRemovedAfterWrite("logistics_provider",entity.getId());
-  support.saveRelations("logistics_provider",entity.getId(),null);return true;
+  support.saveRelations("logistics_provider",entity.getId(),null);support.saveAttachments("logistics_provider",entity.getFeishuRecordId(),"跨境运费",bo.getAttachments());return true;
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean deleteWithValidById(Long id,String revision) {

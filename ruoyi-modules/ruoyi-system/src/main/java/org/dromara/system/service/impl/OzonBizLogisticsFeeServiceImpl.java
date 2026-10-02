@@ -36,7 +36,7 @@ public class OzonBizLogisticsFeeServiceImpl implements IOzonBizLogisticsFeeServi
  public Long insertByBo(OzonBizLogisticsFeeBo bo) {
   var entity=MapstructUtils.convert(bo,OzonBizLogisticsFee.class);entity.setId(null); entity.setFeishuRecordId("local_"+java.util.UUID.randomUUID().toString().replace("-","").substring(0,26)); entity.setFeeNo(support.nextNumber("logistics_fee","fee_no"));
   support.validate("logistics_fee",entity,null,bo.getShipmentIds());
-  mapper.insert(entity);support.clearRemovedAfterWrite("logistics_fee",entity.getId());support.saveRelations("logistics_fee",entity.getId(),bo.getShipmentIds());return entity.getId();
+  mapper.insert(entity);support.clearRemovedAfterWrite("logistics_fee",entity.getId());support.saveRelations("logistics_fee",entity.getId(),bo.getShipmentIds());support.saveAttachments("logistics_fee",entity.getFeishuRecordId(),"附件",bo.getAttachments());return entity.getId();
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean updateByBo(OzonBizLogisticsFeeBo bo) {
@@ -50,7 +50,7 @@ entity.setFeeDate(bo.getFeeDate());
 entity.setShopId(bo.getShopId());
 entity.setRemark(bo.getRemark());
   support.validate("logistics_fee",entity,bo.getId(),bo.getShipmentIds());mapper.updateById(entity);support.clearRemovedAfterWrite("logistics_fee",entity.getId());
-  support.saveRelations("logistics_fee",entity.getId(),bo.getShipmentIds());return true;
+  support.saveRelations("logistics_fee",entity.getId(),bo.getShipmentIds());support.saveAttachments("logistics_fee",entity.getFeishuRecordId(),"附件",bo.getAttachments());return true;
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean deleteWithValidById(Long id,String revision) {

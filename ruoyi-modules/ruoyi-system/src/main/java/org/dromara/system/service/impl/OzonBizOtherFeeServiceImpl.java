@@ -36,7 +36,7 @@ public class OzonBizOtherFeeServiceImpl implements IOzonBizOtherFeeService {
  public Long insertByBo(OzonBizOtherFeeBo bo) {
   var entity=MapstructUtils.convert(bo,OzonBizOtherFee.class);entity.setId(null); entity.setFeishuRecordId("local_"+java.util.UUID.randomUUID().toString().replace("-","").substring(0,26)); entity.setFeeNo(support.nextNumber("other_fee","fee_no"));
   support.validate("other_fee",entity,null,null);
-  mapper.insert(entity);support.clearRemovedAfterWrite("other_fee",entity.getId());support.saveRelations("other_fee",entity.getId(),null);return entity.getId();
+  mapper.insert(entity);support.clearRemovedAfterWrite("other_fee",entity.getId());support.saveRelations("other_fee",entity.getId(),null);support.saveAttachments("other_fee",entity.getFeishuRecordId(),"附件",bo.getAttachments());return entity.getId();
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean updateByBo(OzonBizOtherFeeBo bo) {
@@ -49,7 +49,7 @@ entity.setFeeDate(bo.getFeeDate());
 entity.setShopId(bo.getShopId());
 entity.setRemark(bo.getRemark());
   support.validate("other_fee",entity,bo.getId(),null);mapper.updateById(entity);support.clearRemovedAfterWrite("other_fee",entity.getId());
-  support.saveRelations("other_fee",entity.getId(),null);return true;
+  support.saveRelations("other_fee",entity.getId(),null);support.saveAttachments("other_fee",entity.getFeishuRecordId(),"附件",bo.getAttachments());return true;
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean deleteWithValidById(Long id,String revision) {

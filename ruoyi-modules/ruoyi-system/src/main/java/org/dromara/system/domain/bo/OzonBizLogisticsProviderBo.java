@@ -3,6 +3,7 @@ import lombok.Data;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import jakarta.validation.constraints.*;
 import org.dromara.common.core.validate.*;
 import io.github.linpeilie.annotations.AutoMapper;
@@ -29,6 +30,9 @@ private String system;
 /** 客户代码。 */
 @Size(max=255,groups={AddGroup.class,EditGroup.class})
 private String customerCode;
+/** 跨境运费凭证图片，随记录一起提交。 */
+@Size(max=20,groups={AddGroup.class,EditGroup.class})
+private List<OzonAttachmentRef> attachments;
 /** 版本指纹，防止并发覆盖。 */
 @NotBlank(groups=EditGroup.class) private String revision;
 }

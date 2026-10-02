@@ -36,7 +36,7 @@ public class OzonBizProductServiceImpl implements IOzonBizProductService {
  public Long insertByBo(OzonBizProductBo bo) {
   var entity=MapstructUtils.convert(bo,OzonBizProduct.class);entity.setId(null); entity.setFeishuRecordId("local_"+java.util.UUID.randomUUID().toString().replace("-","").substring(0,26)); entity.setProductNo(support.nextNumber("product","product_no"));
   support.validate("product",entity,null,null);
-  mapper.insert(entity);support.clearRemovedAfterWrite("product",entity.getId());support.saveRelations("product",entity.getId(),null);return entity.getId();
+  mapper.insert(entity);support.clearRemovedAfterWrite("product",entity.getId());support.saveRelations("product",entity.getId(),null);support.saveAttachments("product",entity.getFeishuRecordId(),"货品图片",bo.getAttachments());return entity.getId();
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean updateByBo(OzonBizProductBo bo) {
@@ -58,7 +58,7 @@ entity.setStrikePrice(bo.getStrikePrice());
 entity.setParentId(bo.getParentId());
 entity.setRemark(bo.getRemark());
   support.validate("product",entity,bo.getId(),null);mapper.updateById(entity);support.clearRemovedAfterWrite("product",entity.getId());
-  support.saveRelations("product",entity.getId(),null);return true;
+  support.saveRelations("product",entity.getId(),null);support.saveAttachments("product",entity.getFeishuRecordId(),"货品图片",bo.getAttachments());return true;
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean deleteWithValidById(Long id,String revision) {

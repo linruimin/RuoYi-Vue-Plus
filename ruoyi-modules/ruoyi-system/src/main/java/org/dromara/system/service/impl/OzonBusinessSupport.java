@@ -7,7 +7,10 @@ import org.dromara.common.core.exception.ServiceException;
 import org.dromara.common.json.utils.JsonUtils;
 import org.dromara.common.mybatis.core.page.PageQuery;
 import tools.jackson.core.type.TypeReference;
+import org.dromara.system.domain.OzonBizAttachment;
+import org.dromara.system.domain.bo.OzonAttachmentRef;
 import org.dromara.system.domain.bo.OzonBusinessQuery;
+import org.dromara.system.mapper.OzonBizAttachmentMapper;
 import org.dromara.system.mapper.OzonBusinessRelationMapper;
 import org.dromara.system.mapper.OzonBusinessRemovedFieldMapper;
 import org.springframework.beans.BeanWrapperImpl;
@@ -20,6 +23,7 @@ import java.security.MessageDigest;
 public class OzonBusinessSupport {
  private final OzonBusinessRelationMapper mapper;
  private final OzonBusinessRemovedFieldMapper removedMapper;
+ private final OzonBizAttachmentMapper attachmentMapper;
  private record Link(String table,String column,String target) {}
  private static final Map<String,Map<String,String>> columns=new HashMap<>();
  private static final Map<String,Set<String>> numeric=new HashMap<>(),dates=new HashMap<>(),options=new HashMap<>();
@@ -327,6 +331,67 @@ auto.putAll(Map.of("product","product_no","replenishment","replenish_no","shipme
   if(related==null)return;
   mapper.clearRelations(t.equals("shipment")?"shipment_id":"logistics_fee_id",id);
   for(Long other:new TreeSet<>(related))mapper.addRelation(t.equals("shipment")?id:other,t.equals("shipment")?other:id);
+ }
+ /** 各业务表附件在对象存储中的目录，沿用飞书迁移时的命名，便于新旧文件对账。 */
+ private static final Map<String,String> attachmentFolders=Map.of("product","ozonProduct","logistics_fee","logistics-fees","other_fee","other-fees","logistics_provider","logistics","payment_receipt","payments");
+ /** 单个附件字段的数量上限。 */
+ private static final int maxAttachments=20;
+ /** 附件目录；未登记的表说明不支持图片附件。 */
+ public String attachmentFolder(String t){
+  table(t);
+  String folder=attachmentFolders.get(t);
+  if(folder==null)throw new ServiceException("该业务不支持上传图片");
+  return folder;
+ }
+ /** 保存业务记录时同步附件登记：保留ID一致的、删除未保留的、新增本次上传的；重名自动顺延 _N。 */
+ public void saveAttachments(String t,String sourceId,String fieldName,List<OzonAttachmentRef> items){
+  table(t);
+  if(items==null)return;
+  if(sourceId==null||sourceId.isBlank())throw new ServiceException("附件所属记录不存在");
+  if(fieldName==null||fieldName.isBlank()||fieldName.length()>64)throw new ServiceException("附件字段不正确");
+  if(items.size()>maxAttachments)throw new ServiceException("附件数量不能超过 "+maxAttachments+" 张");
+  List<Map<String,Object>> existing=attachmentMapper.listRefs(t,sourceId,fieldName);
+  Map<Long,String> registered=new LinkedHashMap<>();
+  for(Map<String,Object> row:existing)registered.put(id(row.get("id")),String.valueOf(row.get("file_name")));
+  Set<Long> keep=new HashSet<>();
+  Set<String> used=new HashSet<>();
+  for(OzonAttachmentRef item:items){
+   if(item==null||item.getId()==null)continue;
+   String name=registered.get(item.getId());
+   if(name!=null){keep.add(item.getId());used.add(name);}
+  }
+  for(Map<String,Object> row:existing){
+   Long rowId=id(row.get("id"));
+   if(!keep.contains(rowId))attachmentMapper.deleteById(rowId);
+  }
+  for(OzonAttachmentRef item:items){
+   if(item==null||(item.getId()!=null&&registered.containsKey(item.getId())))continue;
+   String url=item.getCosUrl(),key=item.getCosKey();
+   if(url==null||!url.matches("https?://[^\\s]+"))throw new ServiceException("附件地址不正确");
+   if(key==null||key.isBlank()||key.length()>512)throw new ServiceException("附件对象 Key 不正确");
+   var entity=new OzonBizAttachment();
+   entity.setSourceTable(t);
+   entity.setFeishuRecordId(sourceId);
+   entity.setFieldName(fieldName);
+   entity.setFileName(uniqueAttachmentName(item.getFileName(),key,used));
+   entity.setCosKey(key);
+   entity.setCosUrl(url);
+   entity.setSizeBytes(item.getSizeBytes());
+   entity.setMimeType(item.getMimeType());
+   attachmentMapper.insert(entity);
+  }
+ }
+ /** 附件文件名去重：同记录同字段下重名时依次追加 _2、_3，与历史命名保持一致。 */
+ private static String uniqueAttachmentName(String fileName,String key,Set<String> used){
+  String name=fileName==null||fileName.isBlank()?key.substring(key.lastIndexOf('/')+1):fileName.trim();
+  if(used.add(name))return name;
+  int dot=name.lastIndexOf('.');
+  String base=dot>0?name.substring(0,dot):name;
+  String extension=dot>0?name.substring(dot):"";
+  for(int i=2;;i++){
+   String candidate=base+"_"+i+extension;
+   if(used.add(candidate))return candidate;
+  }
  }
  public void beforeDelete(String t,Long id){
   table(t);

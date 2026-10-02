@@ -36,7 +36,7 @@ public class OzonBizPaymentReceiptServiceImpl implements IOzonBizPaymentReceiptS
  public Long insertByBo(OzonBizPaymentReceiptBo bo) {
   var entity=MapstructUtils.convert(bo,OzonBizPaymentReceipt.class);entity.setId(null); entity.setFeishuRecordId("local_"+java.util.UUID.randomUUID().toString().replace("-","").substring(0,26)); entity.setCode(support.nextNumber("payment_receipt","code"));
   support.validate("payment_receipt",entity,null,null);
-  mapper.insert(entity);support.clearRemovedAfterWrite("payment_receipt",entity.getId());support.saveRelations("payment_receipt",entity.getId(),null);return entity.getId();
+  mapper.insert(entity);support.clearRemovedAfterWrite("payment_receipt",entity.getId());support.saveRelations("payment_receipt",entity.getId(),null);support.saveAttachments("payment_receipt",entity.getFeishuRecordId(),"水单",bo.getAttachments());return entity.getId();
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean updateByBo(OzonBizPaymentReceiptBo bo) {
@@ -49,7 +49,7 @@ entity.setExchangeRate(bo.getExchangeRate());
 entity.setShopId(bo.getShopId());
 entity.setRemark(bo.getRemark());
   support.validate("payment_receipt",entity,bo.getId(),null);mapper.updateById(entity);support.clearRemovedAfterWrite("payment_receipt",entity.getId());
-  support.saveRelations("payment_receipt",entity.getId(),null);return true;
+  support.saveRelations("payment_receipt",entity.getId(),null);support.saveAttachments("payment_receipt",entity.getFeishuRecordId(),"水单",bo.getAttachments());return true;
  }
  @Transactional(rollbackFor=Exception.class)
  public boolean deleteWithValidById(Long id,String revision) {
