@@ -47,7 +47,7 @@ public class OzonReportServiceImpl implements IOzonReportService {
         "localizationIndexPct", "averageDeliveryTimeHours", "totalAmountRub", "importedAt");
     private static final Set<String> SUPPLY_SORT = Set.of("id", "orderId", "applicationNo", "deliveryType",
         "status", "shipmentDate", "shipmentTime", "storageCluster", "dispatchPoint", "completionDate",
-        "deliveryId", "productName", "itemCode", "sku", "liquidity", "quantity", "volume");
+        "deliveryId", "productName", "localProductName", "itemCode", "sku", "liquidity", "quantity", "volume");
     private static final Set<String> RETURNS_SORT = Set.of("reportMonth", "shopId", "shopName", "articleNo", "sku",
         "localProductName", "ozonProductName", "shipmentCount", "returnQty", "processedCount", "pendingCount",
         "disposalCount", "soldUnits", "returnRate", "storageFeeRub", "disposalFeeRub", "maxPriceRub",

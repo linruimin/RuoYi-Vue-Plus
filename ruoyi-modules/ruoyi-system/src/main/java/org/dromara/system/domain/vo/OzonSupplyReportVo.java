@@ -65,6 +65,9 @@ public class OzonSupplyReportVo implements Serializable {
 
     /** Ozon详情链接。 */
     private String ozonOrderUrl;
+    /** 品名（关联产品库的中文名）。 */
+    private String localProductName;
+
     /** 关联产品货品图片的公开文件信息。 */
     private String attachmentJson;
 }
