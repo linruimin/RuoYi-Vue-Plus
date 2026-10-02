@@ -1,5 +1,6 @@
 package org.dromara.system.domain;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -15,6 +16,9 @@ public class OzonAccrualReport implements Serializable {
     /** 记录编号。 */
     @TableId("row_id")
     private Long rowId;
+
+    /** 店铺 → shop.id。 */
+    private Long shopId;
 
     /** 应计费用编号。 */
     private String accrualId;
@@ -66,4 +70,8 @@ public class OzonAccrualReport implements Serializable {
 
     /** 导入时间。 */
     private LocalDateTime importedAt;
+
+    /** 店铺名称，非表字段，按 shop 表回填。 */
+    @TableField(exist = false)
+    private String shopName;
 }

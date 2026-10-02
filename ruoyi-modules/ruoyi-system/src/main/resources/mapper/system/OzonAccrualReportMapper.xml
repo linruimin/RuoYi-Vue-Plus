@@ -1,28 +1,39 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<!--
+  Ozon「订单费用明细」→ ozon_accruals（应计费用明细）
+  增加店铺维度后重写的汇总查询：按 (店铺, 费用编号) 归集
+  关联：ozon_accruals.shop_id → shop.id（LEFT JOIN 取店铺名）
+  店铺范围：q.scopeShopId（来自前端全局所选店铺），为空表示不限制
+-->
 <mapper namespace="org.dromara.system.mapper.OzonAccrualReportMapper">
     <sql id="summaryQuery">
-        SELECT MIN(row_id) AS row_id, accrual_id,
-               MIN(NULLIF(TRIM(product_name), '')) AS product_name,
-               MIN(accrual_date) AS first_accrual_date,
-               MAX(accrual_date) AS accrual_date,
-               SUM(CASE WHEN total_amount_rub &gt; 0 THEN total_amount_rub ELSE 0 END) AS positive_amount_rub,
-               SUM(CASE WHEN total_amount_rub &lt; 0 THEN total_amount_rub ELSE 0 END) AS negative_amount_rub,
-               SUM(total_amount_rub) AS total_amount_rub,
-               (SUM(total_amount_rub) - SUM(CASE WHEN total_amount_rub &gt; 0 THEN total_amount_rub ELSE 0 END) * 0.075) AS after_tax_amount_rub,
-               (SUM(total_amount_rub) - SUM(CASE WHEN total_amount_rub &gt; 0 THEN total_amount_rub ELSE 0 END) * 0.075) * 0.075 AS total_amount_cny,
+        SELECT MIN(a.row_id) AS row_id, a.accrual_id, a.shop_id,
+               MAX(sh.name) AS shop_name,
+               MIN(NULLIF(TRIM(a.product_name), '')) AS product_name,
+               MIN(a.accrual_date) AS first_accrual_date,
+               MAX(a.accrual_date) AS accrual_date,
+               SUM(CASE WHEN a.total_amount_rub &gt; 0 THEN a.total_amount_rub ELSE 0 END) AS positive_amount_rub,
+               SUM(CASE WHEN a.total_amount_rub &lt; 0 THEN a.total_amount_rub ELSE 0 END) AS negative_amount_rub,
+               SUM(a.total_amount_rub) AS total_amount_rub,
+               (SUM(a.total_amount_rub) - SUM(CASE WHEN a.total_amount_rub &gt; 0 THEN a.total_amount_rub ELSE 0 END) * 0.075) AS after_tax_amount_rub,
+               (SUM(a.total_amount_rub) - SUM(CASE WHEN a.total_amount_rub &gt; 0 THEN a.total_amount_rub ELSE 0 END) * 0.075) * 0.075 AS total_amount_cny,
                COUNT(*) AS record_count
-        FROM ozon_accruals
+        FROM ozon_accruals a
+        LEFT JOIN shop sh ON sh.id = a.shop_id
         <where>
-            accrual_id IS NOT NULL AND TRIM(accrual_id) &lt;&gt; ''
+            a.accrual_id IS NOT NULL AND TRIM(a.accrual_id) &lt;&gt; ''
             <if test="q.accrualId != null and q.accrualId != ''">
-                AND accrual_id = #{q.accrualId}
+                AND a.accrual_id = #{q.accrualId}
+            </if>
+            <if test="q.scopeShopId != null">
+                AND a.shop_id = #{q.scopeShopId}
             </if>
         </where>
-        GROUP BY accrual_id
+        GROUP BY a.shop_id, a.accrual_id
         <trim prefix="HAVING" prefixOverrides="AND">
-            <if test="q.startDate != null">AND MAX(accrual_date) &gt;= #{q.startDate}</if>
-            <if test="q.endDate != null">AND MAX(accrual_date) &lt;= #{q.endDate}</if>
+            <if test="q.startDate != null">AND MAX(a.accrual_date) &gt;= #{q.startDate}</if>
+            <if test="q.endDate != null">AND MAX(a.accrual_date) &lt;= #{q.endDate}</if>
         </trim>
     </sql>
     <select id="selectSummary" resultType="org.dromara.system.domain.vo.OzonAccrualSummaryVo">
@@ -37,8 +48,9 @@
                COALESCE(DATE_FORMAT(s.accrual_date, '%Y-%m'), '未知月份') AS report_month,
                SUM(a.total_amount_rub) AS sales_amount_rub
         FROM ozon_accruals a
-        INNER JOIN (<include refid="summaryQuery" />) s ON s.accrual_id = a.accrual_id
+        INNER JOIN (<include refid="summaryQuery" />) s ON s.accrual_id = a.accrual_id AND s.shop_id = a.shop_id
         WHERE a.total_amount_rub &gt; 0 AND s.total_amount_rub &lt;&gt; 0
+        <if test="q.scopeShopId != null">AND a.shop_id = #{q.scopeShopId}</if>
         GROUP BY product_key, report_month
         ORDER BY report_month, product_key
     </select>
@@ -58,8 +70,9 @@
                MAX(a.accrual_date) AS accrual_date,
                SUM(a.total_amount_rub) AS sales_amount_rub
         FROM ozon_accruals a
-        INNER JOIN (<include refid="summaryQuery" />) s ON s.accrual_id = a.accrual_id
+        INNER JOIN (<include refid="summaryQuery" />) s ON s.accrual_id = a.accrual_id AND s.shop_id = a.shop_id
         WHERE a.total_amount_rub &gt; 0 AND s.total_amount_rub &lt;&gt; 0
+        <if test="q.scopeShopId != null">AND a.shop_id = #{q.scopeShopId}</if>
         <if test="q.productKey != null and q.productKey != ''">
             AND <include refid="salesProductKey" /> = #{q.productKey}
         </if>

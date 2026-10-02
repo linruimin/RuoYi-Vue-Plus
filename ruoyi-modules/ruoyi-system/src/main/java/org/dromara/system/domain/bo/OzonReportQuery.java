@@ -53,4 +53,6 @@ public class OzonReportQuery implements Serializable {
     private Boolean groupDesc;
     /** 无应计费用编号时定位独立明细行。 */
     private Long rowId;
+    /** 全局店铺范围，仅订单费用明细生效；为空表示不限制店铺。 */
+    private Long scopeShopId;
 }

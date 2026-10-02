@@ -15,6 +15,12 @@ public class OzonAccrualReportVo implements Serializable {
     /** 记录编号。 */
     private String rowId;
 
+    /** 店铺 → shop.id。 */
+    private Long shopId;
+
+    /** 店铺名称（按 shop 表回填）。 */
+    private String shopName;
+
     /** 应计费用编号。 */
     private String accrualId;
 

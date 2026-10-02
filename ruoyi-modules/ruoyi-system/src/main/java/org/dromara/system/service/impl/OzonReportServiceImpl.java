@@ -30,15 +30,17 @@ public class OzonReportServiceImpl implements IOzonReportService {
     private final OzonMonthlyReportMapper monthlyMapper;
     private final OzonAccrualReportMapper accrualMapper;
     private final OzonSupplyReportMapper supplyMapper;
+    private final OzonBizShopMapper shopMapper;
 
     private static final Set<String> MONTHLY_SORT = Set.of("rowId", "reportMonth", "sellerSku", "ozonSku",
         "productName", "soldUnits", "salesRecordCount", "positiveAccrualTotalRub", "salesRevenueRub",
         "discountPointsRub", "partnerProgramsRub", "otherAccrualsRub", "netSalesIncomeRub", "taxRub",
         "finalTakeHomeRub", "finalTakeHomeCny", "importedAt", "recordName", "localProductName", "unitTakeHomeCny", "averageCost", "unitMultiple", "totalCost", "totalProfit");
-    private static final Set<String> SUMMARY_SORT = Set.of("rowId", "accrualId", "firstAccrualDate",
-        "accrualDate", "positiveAmountRub", "negativeAmountRub", "totalAmountRub", "recordCount",
-        "productName", "afterTaxAmountRub", "totalAmountCny");
-    private static final Set<String> LINE_SORT = Set.of("rowId", "accrualId", "accrualDate", "serviceGroup",
+    private static final Set<String> SUMMARY_SORT = Set.of("rowId", "accrualId", "shopId", "shopName",
+        "firstAccrualDate", "accrualDate", "positiveAmountRub", "negativeAmountRub", "totalAmountRub",
+        "recordCount", "productName", "afterTaxAmountRub", "totalAmountCny");
+    private static final Set<String> LINE_SORT = Set.of("rowId", "accrualId", "shopId", "shopName",
+        "accrualDate", "serviceGroup",
         "accrualType", "sellerSku", "ozonSku", "productName", "quantity", "sellerPriceRub",
         "orderAcceptedOrServiceDate", "salesPlatform", "fulfillmentScheme", "ozonCommissionPct",
         "localizationIndexPct", "averageDeliveryTimeHours", "totalAmountRub", "importedAt");
@@ -70,7 +72,10 @@ public class OzonReportServiceImpl implements IOzonReportService {
     public PageResult<OzonAccrualSummaryVo> accruals(OzonReportQuery q, PageQuery input) {
         validateDates(q);
         Page<OzonAccrualSummaryVo> page = boundedPage(input);
-        page.addOrder(order(sortField(input, SUMMARY_SORT, "accrualDate"), ascending(input)));
+        // 店铺名与店铺一一对应，统一按 shop_id 排序，避免按未分组的名称排序。
+        String summarySort = sortField(input, SUMMARY_SORT, "accrualDate");
+        if ("shopName".equals(summarySort)) summarySort = "shopId";
+        page.addOrder(order(summarySort, ascending(input)));
         page.addOrder(OrderItem.desc("row_id"));
         Page<OzonAccrualSummaryVo> result = accrualMapper.selectSummary(page, q);
         fillProductNames(result.getRecords());
@@ -94,10 +99,16 @@ public class OzonReportServiceImpl implements IOzonReportService {
         } else {
             w.eq(OzonAccrualReport::getRowId, q.getRowId());
         }
+        if (q.getScopeShopId() != null) {
+            w.eq(OzonAccrualReport::getShopId, q.getScopeShopId());
+        }
         Page<OzonAccrualReport> page = boundedPage(input);
-        page.addOrder(order(sortField(input, LINE_SORT, "accrualDate"), ascending(input)));
+        String lineSort = sortField(input, LINE_SORT, "accrualDate");
+        if ("shopName".equals(lineSort)) lineSort = "shopId";
+        page.addOrder(order(lineSort, ascending(input)));
         page.addOrder(OrderItem.desc("row_id"));
         Page<OzonAccrualReportVo> result = accrualMapper.selectVoPage(page, w);
+        fillShopNames(result.getRecords());
         return PageResult.build(result.getRecords(), result.getTotal());
     }
 
@@ -121,24 +132,41 @@ public class OzonReportServiceImpl implements IOzonReportService {
         return PageResult.build(result.getRecords(), result.getTotal());
     }
 
-    /** 仅对当前页批量查商品名，避免GROUP_CONCAT长度限制截断多商品名称。 */
+    /** 仅对当前页批量查商品名，避免GROUP_CONCAT长度限制截断多商品名称；按店铺 + 费用编号归集。 */
     private void fillProductNames(List<OzonAccrualSummaryVo> rows) {
         if (rows.isEmpty()) return;
         var ids = rows.stream().map(OzonAccrualSummaryVo::getAccrualId).toList();
         var query = QueryBuilder.lambda(OzonAccrualReport.class).build();
-        query.select(OzonAccrualReport::getAccrualId, OzonAccrualReport::getProductName)
+        query.select(OzonAccrualReport::getShopId, OzonAccrualReport::getAccrualId, OzonAccrualReport::getProductName)
             .in(OzonAccrualReport::getAccrualId, ids)
             .isNotNull(OzonAccrualReport::getProductName)
-            .groupBy(OzonAccrualReport::getAccrualId, OzonAccrualReport::getProductName)
+            .groupBy(OzonAccrualReport::getShopId, OzonAccrualReport::getAccrualId, OzonAccrualReport::getProductName)
             .orderByAsc(OzonAccrualReport::getProductName);
         Map<String, Set<String>> names = new HashMap<>();
         for (OzonAccrualReport row : accrualMapper.selectList(query)) {
             if (StringUtils.isNotBlank(row.getProductName())) {
-                names.computeIfAbsent(row.getAccrualId(), key -> new LinkedHashSet<>()).add(row.getProductName().trim());
+                names.computeIfAbsent(shopKey(row.getShopId(), row.getAccrualId()), key -> new LinkedHashSet<>()).add(row.getProductName().trim());
             }
         }
         for (OzonAccrualSummaryVo row : rows) {
-            row.setProductName(String.join(" / ", names.getOrDefault(row.getAccrualId(), Set.of())));
+            row.setProductName(String.join(" / ", names.getOrDefault(shopKey(row.getShopId(), row.getAccrualId()), Set.of())));
+        }
+    }
+
+    /** 用店铺 + 费用编号定位一组应计记录。 */
+    private static String shopKey(Long shopId, String accrualId) {
+        return shopId + ":" + accrualId;
+    }
+
+    /** 明细为只读实体查询，店铺名按 shop 表回填。 */
+    private void fillShopNames(List<OzonAccrualReportVo> rows) {
+        if (rows.isEmpty()) return;
+        Map<Long, String> names = new HashMap<>();
+        for (OzonBizShop shop : shopMapper.selectList(new QueryWrapper<>())) {
+            names.put(shop.getId(), shop.getName());
+        }
+        for (OzonAccrualReportVo row : rows) {
+            row.setShopName(names.get(row.getShopId()));
         }
     }
 
