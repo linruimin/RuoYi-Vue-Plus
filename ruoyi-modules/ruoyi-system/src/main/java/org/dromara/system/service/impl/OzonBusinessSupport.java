@@ -77,6 +77,10 @@ dates.put("shop",Set.of("createdAt","updatedAt"));
 columns.put("attachment",Map.ofEntries(Map.entry("id","b.`id`"),Map.entry("sourceTable","b.`source_table`"),Map.entry("fieldName","b.`field_name`"),Map.entry("fileName","b.`file_name`"),Map.entry("cosKey","b.`cos_key`"),Map.entry("cosUrl","b.`cos_url`"),Map.entry("sizeBytes","b.`size_bytes`"),Map.entry("mimeType","b.`mime_type`"),Map.entry("createdAt","b.`created_at`")));
 numeric.put("attachment",Set.of("id","sizeBytes"));
 dates.put("attachment",Set.of("createdAt"));
+columns.put("returns",Map.ofEntries(Map.entry("id","b.`id`"),Map.entry("shopId","b.`shop_id`"),Map.entry("fulfillmentScheme","b.`fulfillment_scheme`"),Map.entry("shipmentNo","b.`shipment_no`"),Map.entry("articleNo","b.`article_no`"),Map.entry("sku","b.`sku`"),Map.entry("orderDate","b.`order_date`"),Map.entry("returnDate","b.`return_date`"),Map.entry("statusDate","b.`status_date`"),Map.entry("compensationDate","b.`compensation_date`"),Map.entry("pickupPointDate","b.`pickup_point_date`"),Map.entry("returnToSellerDate","b.`return_to_seller_date`"),Map.entry("freeStorageUntil","b.`free_storage_until`"),Map.entry("returnStatus","b.`return_status`"),Map.entry("compensationStatus","b.`compensation_status`"),Map.entry("mandatoryFlag","b.`mandatory_flag`"),Map.entry("returnReason","b.`return_reason`"),Map.entry("buyerComment","b.`buyer_comment`"),Map.entry("buyerType","b.`buyer_type`"),Map.entry("returnQty","b.`return_qty`"),Map.entry("packageOpened","b.`package_opened`"),Map.entry("destination","b.`destination`"),Map.entry("storageAddress","b.`storage_address`"),Map.entry("location","b.`location`"),Map.entry("storageDays","b.`storage_days`"),Map.entry("returnBarcode","b.`return_barcode`"),Map.entry("storageFeeRub","b.`storage_fee_rub`"),Map.entry("disposalFeeRub","b.`disposal_fee_rub`"),Map.entry("maxPriceRub","b.`max_price_rub`"),Map.entry("ozonProductName","b.`ozon_product_name`"),Map.entry("sourceFile","b.`source_file`"),Map.entry("importedAt","b.`imported_at`"),Map.entry("productId","p_view.id"),Map.entry("productNo","p_view.product_no"),Map.entry("productName","p_view.name")));
+numeric.put("returns",Set.of("id","shopId","returnQty","storageDays","storageFeeRub","disposalFeeRub","maxPriceRub","productId","productNo"));
+dates.put("returns",Set.of("orderDate","returnDate","statusDate","compensationDate","pickupPointDate","returnToSellerDate","freeStorageUntil","importedAt"));
+links.add(new Link("returns","shop_id","shop"));
 var shipmentColumns=new HashMap<>(columns.get("shipment"));
 shipmentColumns.put("productNo","p_view.product_no");
 shipmentColumns.put("productName","p_view.name");
@@ -204,7 +208,7 @@ auto.putAll(Map.of("product","product_no","replenishment","replenish_no","shipme
  /** 按直接归属或已有业务关联限定店铺；物流商为共用资料。 */
  private String shopPredicate(String t,String alias){
   return switch(t){
-   case "product","purchase_order","shipment","logistics_fee","other_fee","payment_receipt" -> alias+".shop_id={0}";
+   case "product","purchase_order","shipment","logistics_fee","other_fee","payment_receipt","returns" -> alias+".shop_id={0}";
    case "shop" -> alias+".id={0}";
    case "replenishment" -> "EXISTS(SELECT 1 FROM product scope_product WHERE scope_product.id="+alias+".product_id AND scope_product.shop_id={0})";
    case "studio_receipt" -> "EXISTS(SELECT 1 FROM purchase_order scope_order WHERE scope_order.order_no="+alias+".order_no AND scope_order.shop_id={0})";

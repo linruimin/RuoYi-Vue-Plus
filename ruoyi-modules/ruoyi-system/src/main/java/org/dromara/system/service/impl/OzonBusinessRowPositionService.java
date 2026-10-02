@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** 在默认手动顺序中持久插入记录，不改变记录的业务字段。 */
 @DS("ozon") @Service @RequiredArgsConstructor
 public class OzonBusinessRowPositionService {
- private static final Set<String> TABLES=Set.of("product","replenishment","purchase_order","shipment","logistics_fee","other_fee","logistics_provider","studio_receipt","payment_receipt","shop","attachment");
+ private static final Set<String> TABLES=Set.of("product","replenishment","purchase_order","shipment","logistics_fee","other_fee","logistics_provider","studio_receipt","payment_receipt","shop","attachment","returns");
  private final OzonBusinessRowPositionMapper mapper;
  @Transactional(rollbackFor=Exception.class)
  public void place(String table,Long rowId,Long anchorId,String placement){

@@ -32,6 +32,7 @@ public class OzonBusinessCustomFieldController {
             case "logistics-provider" -> new Table("logistics_provider", "logisticsProvider");
             case "studio-receipt" -> new Table("studio_receipt", "studioReceipt");
             case "payment-receipt" -> new Table("payment_receipt", "paymentReceipt");
+            case "returns" -> new Table("returns", "returns");
             default -> throw new IllegalArgumentException("不支持的业务表");
         };
     }
