@@ -143,7 +143,7 @@ auto.putAll(Map.of("product","product_no","replenishment","replenish_no","shipme
   if(q.getConditions()!=null&&!q.getConditions().isBlank())applyConditions(w,t,cols,q.getConditions(),q.getConjunction());
   if(Boolean.TRUE.equals(q.getManualOrder())){
    if(q.getGroupFields()!=null&&!q.getGroupFields().isBlank()||q.getSortFields()!=null&&!q.getSortFields().isBlank())throw new ServiceException("手动顺序不能与分组或字段排序同时使用");
-   w.orderByAsc("COALESCE((SELECT position_key FROM ozon_business_grid_metadata pos WHERE pos.table_name='"+t+"' AND pos.item_kind='row' AND pos.item_key=CAST(b.id AS CHAR)),-CAST(b.id AS DECIMAL(40,20)))");
+   w.orderByAsc("COALESCE((SELECT position_key FROM ozon_business_grid_metadata pos WHERE pos.table_name='"+t+"' AND pos.item_kind='row' AND pos.item_key=CAST(b.id AS CHAR) COLLATE utf8mb4_0900_ai_ci),-CAST(b.id AS DECIMAL(40,20)))");
    w.orderByDesc("b.id");return w;
   }
   var ordered=new LinkedHashSet<String>();
