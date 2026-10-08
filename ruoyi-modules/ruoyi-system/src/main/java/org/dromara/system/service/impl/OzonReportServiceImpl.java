@@ -124,7 +124,7 @@ public class OzonReportServiceImpl implements IOzonReportService {
             .eqIfText(OzonSupplyReport::getSku, q.getOzonSku())
             .likeIfText(OzonSupplyReport::getProductName, q.getProductName())
             .eqIfText(OzonSupplyReport::getApplicationNo, q.getApplicationNo()).build();
-        // 原接口默认已完成；“全部”视图显式传空状态。
+        // 状态为空（默认）时不限申请状态，即显示全部；“申请状态”筛选选中具体状态才过滤。
         if (StringUtils.isNotBlank(q.getStatus())) w.eq(OzonSupplyReport::getStatus, q.getStatus());
         String sort = sortField(input, SUPPLY_SORT, "completionDate");
         Page<OzonSupplyReport> page = boundedPage(input);

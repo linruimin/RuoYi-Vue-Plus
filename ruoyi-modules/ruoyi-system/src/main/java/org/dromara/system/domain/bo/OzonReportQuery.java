@@ -43,9 +43,9 @@ public class OzonReportQuery implements Serializable {
     /** 交货申请编号。 */
     @Size(max = 64)
     private String applicationNo;
-    /** 交货申请状态。 */
+    /** 交货申请状态；为空表示不过滤，即默认显示全部状态。 */
     @Size(max = 32)
-    private String status = "已完成";
+    private String status;
     /** 报表分组：month、sku 或 none。 */
     @Pattern(regexp = "month|sku|none", message = "分组方式不正确")
     private String groupBy = "month";
