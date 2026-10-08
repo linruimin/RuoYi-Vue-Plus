@@ -144,6 +144,12 @@ public class OzonReportServiceImpl implements IOzonReportService {
     }
 
     @Override
+    public List<OzonSupplyReportVo> supplyProductRows(Long scopeShopId, String status, String sku) {
+        // 与统计口径保持一致：空状态不限申请状态，店铺为空不限店铺。
+        return supplyMapper.selectProductRows(scopeShopId, status, sku);
+    }
+
+    @Override
     public PageResult<OzonReturnsReportVo> returnsReport(OzonReportQuery q, PageQuery input) {
         var w = new QueryWrapper<OzonBizReturns>();
         // 外层同时挂了 r（汇总子查询）与 p_view（product），article_no / sku / shop_id 都重名，

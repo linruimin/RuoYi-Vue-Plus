@@ -46,4 +46,23 @@ public interface OzonSupplyReportMapper extends BaseMapperPlus<OzonSupplyReport,
         </script>
         """)
     List<OzonSupplyStatsVo> selectProductStats(@Param("shopId") Long shopId, @Param("status") String status);
+
+    /** 单个卖家货号下的交货申请明细行，供交货报表图表下钻；店铺与状态为空表示不过滤。 */
+    @Select("""
+        <script>
+        SELECT r.* FROM (
+          SELECT s.*, p.name AS local_product_name, (SELECT JSON_ARRAYAGG(JSON_OBJECT('id',a.id,'fileName',a.file_name,'mimeType',a.mime_type,'cosUrl',a.cos_url)) FROM attachment a WHERE a.source_table='product' AND a.feishu_record_id=p.feishu_record_id AND a.field_name='货品图片' AND a.cos_url IS NOT NULL AND a.cos_url != '') AS attachment_json
+          FROM ozon_supply_product_details_20260914 s
+          LEFT JOIN product p ON p.id=COALESCE((SELECT MIN(p2.id) FROM product p2 WHERE p2.article_no=s.sku COLLATE utf8mb4_unicode_ci),(SELECT MIN(p2.id) FROM product p2 WHERE p2.article_no=s.item_code COLLATE utf8mb4_unicode_ci))
+          WHERE s.sku = #{sku}
+        ) r
+        <where>
+          <if test="shopId != null">r.shop_id = #{shopId}</if>
+          <if test="status != null and status != ''">AND r.status = #{status}</if>
+        </where>
+        ORDER BY STR_TO_DATE(r.completion_date, '%d.%m.%Y') DESC, r.id DESC
+        </script>
+        """)
+    List<OzonSupplyReportVo> selectProductRows(@Param("shopId") Long shopId, @Param("status") String status,
+                                               @Param("sku") String sku);
 }
