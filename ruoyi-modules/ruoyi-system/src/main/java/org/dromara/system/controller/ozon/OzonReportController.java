@@ -41,6 +41,14 @@ public class OzonReportController extends BaseController {
         return R.ok(reportService.supply(query, page));
     }
 
+    /** 交货报表：按产品汇总交货数量，供图表展示；状态与店铺为空表示不过滤。 */
+    @SaCheckPermission("ozon:report:list")
+    @GetMapping("/supply/stats")
+    public R<java.util.List<OzonSupplyStatsVo>> supplyStats(@RequestParam(required = false) Long scopeShopId,
+                                                            @RequestParam(required = false) String status) {
+        return R.ok(reportService.supplyStats(scopeShopId, status));
+    }
+
     /** 退货报表：按退货月份 × SKU 汇总退货件数、费用与退货率。 */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/returns-report/list")

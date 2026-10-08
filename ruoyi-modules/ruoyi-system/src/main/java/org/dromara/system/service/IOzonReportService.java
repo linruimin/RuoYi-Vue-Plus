@@ -23,4 +23,6 @@ public interface IOzonReportService {
     java.util.List<OzonSalesProductVo> salesProducts(OzonReportQuery query);
     /** 查询所选产品的全部逐笔销售额。 */
     java.util.List<OzonProductSaleVo> salesTransactions(OzonReportQuery query);
+    /** 交货报表：按产品聚合交货数量，供图表展示。 */
+    java.util.List<OzonSupplyStatsVo> supplyStats(Long scopeShopId, String status);
 }

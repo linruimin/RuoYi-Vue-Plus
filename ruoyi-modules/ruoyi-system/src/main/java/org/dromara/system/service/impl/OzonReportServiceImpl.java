@@ -138,6 +138,12 @@ public class OzonReportServiceImpl implements IOzonReportService {
     }
 
     @Override
+    public List<OzonSupplyStatsVo> supplyStats(Long scopeShopId, String status) {
+        // 空状态表示不限申请状态；店铺为空表示不限店铺。
+        return supplyMapper.selectProductStats(scopeShopId, status);
+    }
+
+    @Override
     public PageResult<OzonReturnsReportVo> returnsReport(OzonReportQuery q, PageQuery input) {
         var w = new QueryWrapper<OzonBizReturns>();
         // 外层同时挂了 r（汇总子查询）与 p_view（product），article_no / sku / shop_id 都重名，
