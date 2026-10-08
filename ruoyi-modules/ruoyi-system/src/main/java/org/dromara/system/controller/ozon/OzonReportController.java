@@ -41,21 +41,23 @@ public class OzonReportController extends BaseController {
         return R.ok(reportService.supply(query, page));
     }
 
-    /** 交货报表：按产品汇总交货数量，供图表展示；状态与店铺为空表示不过滤。 */
+    /** 交货图表：按月趋势 + 按产品排行；店铺 / 状态 / 月份为空表示不过滤（归月口径＝明细完成日期）。 */
     @SaCheckPermission("ozon:report:list")
-    @GetMapping("/supply/stats")
-    public R<java.util.List<OzonSupplyStatsVo>> supplyStats(@RequestParam(required = false) Long scopeShopId,
-                                                            @RequestParam(required = false) String status) {
-        return R.ok(reportService.supplyStats(scopeShopId, status));
+    @GetMapping("/supply/chart")
+    public R<OzonSupplyChartVo> supplyChart(@RequestParam(required = false) Long scopeShopId,
+                                            @RequestParam(required = false) String status,
+                                            @RequestParam(required = false) String month) {
+        return R.ok(reportService.supplyChart(scopeShopId, status, month));
     }
 
-    /** 交货报表下钻：某个产品下的全部交货申请明细行，供点击柱子查看。 */
+    /** 交货图表下钻：某个卖家货号或某个月份下的交货申请明细行，供点击柱子查看。 */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/supply/product-rows")
     public R<java.util.List<OzonSupplyReportVo>> supplyProductRows(@RequestParam(required = false) Long scopeShopId,
                                                                   @RequestParam(required = false) String status,
-                                                                  @RequestParam String sku) {
-        return R.ok(reportService.supplyProductRows(scopeShopId, status, sku));
+                                                                  @RequestParam(required = false) String sku,
+                                                                  @RequestParam(required = false) String month) {
+        return R.ok(reportService.supplyProductRows(scopeShopId, status, sku, month));
     }
 
     /** 退货图表：按月趋势 + 按产品排行；店铺 / 状态 / 月份为空表示不过滤。 */

@@ -138,15 +138,19 @@ public class OzonReportServiceImpl implements IOzonReportService {
     }
 
     @Override
-    public List<OzonSupplyStatsVo> supplyStats(Long scopeShopId, String status) {
-        // 空状态表示不限申请状态；店铺为空表示不限店铺。
-        return supplyMapper.selectProductStats(scopeShopId, status);
+    public OzonSupplyChartVo supplyChart(Long scopeShopId, String status, String month) {
+        // 空状态不限申请状态、空月份不限月份、店铺为空不限店铺；两个维度共用同一筛选，保证口径一致。
+        // 「按月趋势」始终展示全部月份（不受 month 影响），「按产品排行」受 month 筛选。
+        OzonSupplyChartVo chart = new OzonSupplyChartVo();
+        chart.setMonths(supplyMapper.selectMonthStats(scopeShopId, status));
+        chart.setProducts(supplyMapper.selectProductStats(scopeShopId, status, month));
+        return chart;
     }
 
     @Override
-    public List<OzonSupplyReportVo> supplyProductRows(Long scopeShopId, String status, String sku) {
-        // 与统计口径保持一致：空状态不限申请状态，店铺为空不限店铺。
-        return supplyMapper.selectProductRows(scopeShopId, status, sku);
+    public List<OzonSupplyReportVo> supplyProductRows(Long scopeShopId, String status, String sku, String month) {
+        // 与图表口径保持一致：下钻行同样受店铺 / 状态 / 月份过滤。
+        return supplyMapper.selectProductRows(scopeShopId, status, sku, month);
     }
 
     @Override

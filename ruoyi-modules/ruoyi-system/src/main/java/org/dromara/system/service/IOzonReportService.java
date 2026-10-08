@@ -23,10 +23,10 @@ public interface IOzonReportService {
     java.util.List<OzonSalesProductVo> salesProducts(OzonReportQuery query);
     /** 查询所选产品的全部逐笔销售额。 */
     java.util.List<OzonProductSaleVo> salesTransactions(OzonReportQuery query);
-    /** 交货报表：按产品聚合交货数量，供图表展示。 */
-    java.util.List<OzonSupplyStatsVo> supplyStats(Long scopeShopId, String status);
-    /** 交货报表下钻：单个卖家货号下的交货申请明细行。 */
-    java.util.List<OzonSupplyReportVo> supplyProductRows(Long scopeShopId, String status, String sku);
+    /** 交货图表：按月趋势 + 按产品排行，一次查询保证口径一致。 */
+    OzonSupplyChartVo supplyChart(Long scopeShopId, String status, String month);
+    /** 交货图表下钻：某个卖家货号或某个月份下的交货申请明细行。 */
+    java.util.List<OzonSupplyReportVo> supplyProductRows(Long scopeShopId, String status, String sku, String month);
 
     /** 退货图表：按月趋势 + 按产品排行，一次查询保证口径一致。 */
     OzonReturnsChartVo returnsChart(Long scopeShopId, String status, String month);
