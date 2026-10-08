@@ -150,6 +150,21 @@ public class OzonReportServiceImpl implements IOzonReportService {
     }
 
     @Override
+    public OzonReturnsChartVo returnsChart(Long scopeShopId, String status, String month) {
+        // 空状态不限退货状态、空月份不限月份、店铺为空不限店铺；两个维度共用同一筛选，保证口径一致。
+        OzonReturnsChartVo chart = new OzonReturnsChartVo();
+        chart.setMonths(returnsReportMapper.selectMonthStats(scopeShopId, status));
+        chart.setProducts(returnsReportMapper.selectProductStats(scopeShopId, status, month));
+        return chart;
+    }
+
+    @Override
+    public List<OzonBizReturnsVo> returnsChartRows(Long scopeShopId, String status, String month, String articleNo) {
+        // 与图表口径保持一致：下钻行同样受店铺 / 状态 / 月份过滤。
+        return returnsReportMapper.selectChartRows(scopeShopId, status, month, articleNo);
+    }
+
+    @Override
     public PageResult<OzonReturnsReportVo> returnsReport(OzonReportQuery q, PageQuery input) {
         var w = new QueryWrapper<OzonBizReturns>();
         // 外层同时挂了 r（汇总子查询）与 p_view（product），article_no / sku / shop_id 都重名，

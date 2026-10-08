@@ -27,4 +27,10 @@ public interface IOzonReportService {
     java.util.List<OzonSupplyStatsVo> supplyStats(Long scopeShopId, String status);
     /** 交货报表下钻：单个卖家货号下的交货申请明细行。 */
     java.util.List<OzonSupplyReportVo> supplyProductRows(Long scopeShopId, String status, String sku);
+
+    /** 退货图表：按月趋势 + 按产品排行，一次查询保证口径一致。 */
+    OzonReturnsChartVo returnsChart(Long scopeShopId, String status, String month);
+
+    /** 退货图表下钻：某个卖家货号或某个月份下的退货明细行。 */
+    java.util.List<OzonBizReturnsVo> returnsChartRows(Long scopeShopId, String status, String month, String articleNo);
 }

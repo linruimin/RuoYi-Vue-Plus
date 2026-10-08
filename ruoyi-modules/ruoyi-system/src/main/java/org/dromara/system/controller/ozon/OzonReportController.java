@@ -58,6 +58,25 @@ public class OzonReportController extends BaseController {
         return R.ok(reportService.supplyProductRows(scopeShopId, status, sku));
     }
 
+    /** 退货图表：按月趋势 + 按产品排行；店铺 / 状态 / 月份为空表示不过滤。 */
+    @SaCheckPermission("ozon:report:list")
+    @GetMapping("/returns/chart")
+    public R<OzonReturnsChartVo> returnsChart(@RequestParam(required = false) Long scopeShopId,
+                                              @RequestParam(required = false) String status,
+                                              @RequestParam(required = false) String month) {
+        return R.ok(reportService.returnsChart(scopeShopId, status, month));
+    }
+
+    /** 退货图表下钻：某个卖家货号或某个月份下的退货明细行，供点击柱子查看。 */
+    @SaCheckPermission("ozon:report:list")
+    @GetMapping("/returns/product-rows")
+    public R<java.util.List<OzonBizReturnsVo>> returnsChartRows(@RequestParam(required = false) Long scopeShopId,
+                                                                @RequestParam(required = false) String status,
+                                                                @RequestParam(required = false) String month,
+                                                                @RequestParam(required = false) String articleNo) {
+        return R.ok(reportService.returnsChartRows(scopeShopId, status, month, articleNo));
+    }
+
     /** 退货报表：按退货月份 × SKU 汇总退货件数、费用与退货率。 */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/returns-report/list")
