@@ -79,6 +79,29 @@ public class OzonReportController extends BaseController {
         return R.ok(reportService.returnsChartRows(scopeShopId, status, month, articleNo));
     }
 
+    /** 订单图表：按月趋势 + 按货号排行（金额＝总计 RUB 净额）；店铺 / 费用分组 / 月份为空表示不过滤。 */
+    @SaCheckPermission("ozon:report:list")
+    @GetMapping("/accruals/chart")
+    public R<OzonAccrualChartVo> accrualChart(@RequestParam(required = false) Long scopeShopId,
+                                              @RequestParam(required = false) String serviceGroup,
+                                              @RequestParam(required = false) String month) {
+        return R.ok(reportService.accrualChart(scopeShopId, serviceGroup, month));
+    }
+
+    /**
+     * 订单图表下钻：某个卖家货号或某个月份下的订单费用原始明细行。
+     * sku 不传＝不按货号过滤；sku 传空串＝只看没有卖家货号的明细（对应图表里的「未标注货号」）。
+     */
+    @SaCheckPermission("ozon:report:list")
+    @GetMapping("/accruals/chart-rows")
+    public R<PageResult<OzonAccrualReportVo>> accrualChartRows(@RequestParam(required = false) Long scopeShopId,
+                                                              @RequestParam(required = false) String serviceGroup,
+                                                              @RequestParam(required = false) String sku,
+                                                              @RequestParam(required = false) String month,
+                                                              PageQuery page) {
+        return R.ok(reportService.accrualChartRows(scopeShopId, serviceGroup, sku, month, page));
+    }
+
     /** 退货报表：按退货月份 × SKU 汇总退货件数、费用与退货率。 */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/returns-report/list")

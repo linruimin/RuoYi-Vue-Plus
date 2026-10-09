@@ -169,6 +169,31 @@ public class OzonReportServiceImpl implements IOzonReportService {
     }
 
     @Override
+    public OzonAccrualChartVo accrualChart(Long scopeShopId, String serviceGroup, String month) {
+        // 空分组不限费用分组、空月份不限月份、店铺为空不限店铺；两个维度共用同一筛选，保证口径一致。
+        // 「按月趋势」始终展示全部月份（不受 month 影响），「按货号排行」受 month 筛选。
+        OzonAccrualChartVo chart = new OzonAccrualChartVo();
+        chart.setMonths(accrualMapper.selectChartMonthStats(scopeShopId, serviceGroup));
+        chart.setProducts(accrualMapper.selectChartProductStats(scopeShopId, serviceGroup, month));
+        return chart;
+    }
+
+    @Override
+    public PageResult<OzonAccrualReportVo> accrualChartRows(Long scopeShopId, String serviceGroup, String sku,
+                                                            String month, PageQuery input) {
+        // 与图表口径保持一致：下钻行同样受店铺 / 费用分组 / 月份 / 货号过滤。
+        // 单货号单月最多 3.5 万行，所以这里必须后端分页，不能像交货图表那样一次返回。
+        Page<OzonAccrualReportVo> page = boundedPage(input);
+        String rowSort = sortField(input, LINE_SORT, "accrualDate");
+        if ("shopName".equals(rowSort)) rowSort = "shopId";
+        page.addOrder(order(rowSort, ascending(input)));
+        page.addOrder(OrderItem.desc("row_id"));
+        Page<OzonAccrualReportVo> result = accrualMapper.selectChartRows(page, scopeShopId, serviceGroup, sku, month);
+        fillShopNames(result.getRecords());
+        return PageResult.build(result.getRecords(), result.getTotal());
+    }
+
+    @Override
     public PageResult<OzonReturnsReportVo> returnsReport(OzonReportQuery q, PageQuery input) {
         var w = new QueryWrapper<OzonBizReturns>();
         // 外层同时挂了 r（汇总子查询）与 p_view（product），article_no / sku / shop_id 都重名，
