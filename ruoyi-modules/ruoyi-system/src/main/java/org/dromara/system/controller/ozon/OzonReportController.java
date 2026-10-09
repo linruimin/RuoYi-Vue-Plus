@@ -103,6 +103,18 @@ public class OzonReportController extends BaseController {
         return R.ok(reportService.accrualChartRows(scopeShopId, serviceGroup, sku, month, page));
     }
 
+    /**
+     * 汇总图表：把交货 / 订单 / 退货三个主题的月度与货号汇总并到一起（单位不同，页面用双轴展示）。
+     * 「按月趋势」不受月份筛选影响，「按货号排行」受月份筛选影响；店铺为空表示不过滤全部店铺。
+     * 下钻明细直接复用各主题已有的下钻接口，不新增行级接口。
+     */
+    @SaCheckPermission("ozon:report:list")
+    @GetMapping("/summary/chart")
+    public R<OzonSummaryChartVo> summaryChart(@RequestParam(required = false) Long scopeShopId,
+                                              @RequestParam(required = false) String month) {
+        return R.ok(reportService.summaryChart(scopeShopId, month));
+    }
+
     /** 退货报表：按退货月份 × SKU 汇总退货件数、费用与退货率。 */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/returns-report/list")

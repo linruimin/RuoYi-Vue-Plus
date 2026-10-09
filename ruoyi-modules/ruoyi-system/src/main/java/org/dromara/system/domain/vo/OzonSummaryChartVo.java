@@ -1,0 +1,66 @@
+package org.dromara.system.domain.vo;
+
+import lombok.Data;
+import java.io.Serializable;
+import java.math.BigDecimal;
+import java.util.List;
+
+/**
+ * 汇总图表数据：同一次查询把「交货 / 订单 / 退货」三个主题的月度与货号汇总并到一起，
+ * 供「0.0汇总图表」一张页面对比三者的走势与结构。
+ * <p>
+ * 口径与各自的图表页完全一致：
+ * 「按月趋势」不受月份筛选影响（始终展示全部月份），「按货号排行」受月份筛选影响；
+ * 交货数量按明细「完成日期」归月、退货件数按「退货日期」归月、订单金额按「应计日期」归月。
+ * 单位：交货 / 退货为「件」，订单为「总计（RUB）净额」（销售额与各项应计费用正负相抵）。
+ */
+@Data
+public class OzonSummaryChartVo implements Serializable {
+    /** 按月份合并的三个主题汇总，供趋势组合图；月份升序。 */
+    private List<MonthStat> months;
+
+    /** 按卖家货号归并的三个主题指标，供排行分组柱状图。 */
+    private List<ProductStat> products;
+
+    /** 单个月份的三个主题汇总；某主题该月没有数据时对应字段为空。 */
+    @Data
+    public static class MonthStat implements Serializable {
+        /** 月份（YYYY-MM），三个主题取并集。 */
+        private String month;
+        /** 交货件数（归月口径＝明细完成日期）。 */
+        private Integer supplyQty;
+        /** 交货申请数（按 order_id 去重）。 */
+        private Integer supplyOrders;
+        /** 订单费用总计（RUB）净额（归月口径＝明细应计日期）。 */
+        private BigDecimal accrualAmountRub;
+        /** 订单费用编号数（按 accrual_id 去重）。 */
+        private Long accrualCount;
+        /** 退货件数（归月口径＝退货日期）。 */
+        private Integer returnQty;
+        /** 退货货件行数。 */
+        private Integer returnShipments;
+    }
+
+    /** 单个卖家货号的三个主题汇总；某主题没有该货号时对应字段为空。 */
+    @Data
+    public static class ProductStat implements Serializable {
+        /** 卖家货号；订单侧没有货号时为空串，前端显示为「未标注货号」。 */
+        private String sku;
+        /** 产品库中文品名（三个主题谁先取到用谁）。 */
+        private String productName;
+        /** 产品库「货品图片」的附件信息（JSON 字符串）。 */
+        private String attachmentJson;
+        /** 交货件数（该货号在交货表里的全部状态合计）。 */
+        private Integer supplyQty;
+        /** 交货申请数（按 order_id 去重）。 */
+        private Integer supplyOrders;
+        /** 订单费用总计（RUB）净额。 */
+        private BigDecimal accrualAmountRub;
+        /** 订单费用编号数（按 accrual_id 去重）。 */
+        private Long accrualCount;
+        /** 退货件数。 */
+        private Integer returnQty;
+        /** 退货货件行数。 */
+        private Integer returnShipments;
+    }
+}

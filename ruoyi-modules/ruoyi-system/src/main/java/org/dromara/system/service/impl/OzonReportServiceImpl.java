@@ -16,11 +16,16 @@ import org.dromara.system.domain.vo.*;
 import org.dromara.system.mapper.*;
 import org.dromara.system.service.IOzonReportService;
 import org.springframework.stereotype.Service;
+import java.math.BigDecimal;
 import java.util.Set;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.TreeMap;
 
 /** 查询宿主 MySQL 的现有报表，不复制或修改源数据。 */
 @DS("ozon")
@@ -203,6 +208,107 @@ public class OzonReportServiceImpl implements IOzonReportService {
         Page<OzonAccrualReportVo> result = accrualMapper.selectChartRows(page, scopeShopId, serviceGroup, skuFilter, month);
         fillShopNames(result.getRecords());
         return PageResult.build(result.getRecords(), result.getTotal());
+    }
+
+    @Override
+    public OzonSummaryChartVo summaryChart(Long scopeShopId, String month) {
+        // 汇总页把三个主题的汇总并在一起，口径与各自的图表页保持一致：
+        // 三个主题各自「按月趋势」不带月份筛选（看全貌），「按货号排行」带月份筛选。
+        // 汇总页不提供各主题的原生筛选（交货状态 / 费用分组 / 退货状态），一律按全量口径统计。
+        // 实现上直接复用三个 Mapper 已有的聚合方法，只是把筛选参数传 null，不新增 SQL。
+
+        // ---- 按月趋势：三个主题各自聚合后按月份取并集，月份升序 ----
+        Map<String, OzonSummaryChartVo.MonthStat> monthMap = new TreeMap<>();
+        for (OzonSupplyChartVo.MonthStat s : supplyMapper.selectMonthStats(scopeShopId, null)) {
+            OzonSummaryChartVo.MonthStat m = monthMap.computeIfAbsent(s.getMonth(), OzonReportServiceImpl::summaryMonth);
+            m.setSupplyQty(s.getTotalQuantity());
+            m.setSupplyOrders(s.getOrderCount());
+        }
+        for (OzonAccrualChartVo.MonthStat a : accrualMapper.selectChartMonthStats(scopeShopId, null)) {
+            OzonSummaryChartVo.MonthStat m = monthMap.computeIfAbsent(a.getMonth(), OzonReportServiceImpl::summaryMonth);
+            m.setAccrualAmountRub(a.getTotalAmountRub());
+            m.setAccrualCount(a.getAccrualCount());
+        }
+        for (OzonReturnsChartVo.MonthStat r : returnsReportMapper.selectMonthStats(scopeShopId, null)) {
+            OzonSummaryChartVo.MonthStat m = monthMap.computeIfAbsent(r.getMonth(), OzonReportServiceImpl::summaryMonth);
+            m.setReturnQty(r.getReturnQty());
+            m.setReturnShipments(r.getShipmentCount());
+        }
+        OzonSummaryChartVo chart = new OzonSummaryChartVo();
+        chart.setMonths(new ArrayList<>(monthMap.values()));
+
+        // ---- 按货号排行：三个主题各自聚合后按卖家货号归并（交货 sku / 订单 seller_sku / 退货 article_no）----
+        Map<String, OzonSummaryChartVo.ProductStat> productMap = new LinkedHashMap<>();
+        for (OzonSupplyStatsVo s : supplyMapper.selectProductStats(scopeShopId, null, month)) {
+            OzonSummaryChartVo.ProductStat p = productMap.computeIfAbsent(summaryKey(s.getSku()),
+                OzonReportServiceImpl::summaryProduct);
+            p.setSupplyQty(s.getTotalQuantity());
+            p.setSupplyOrders(s.getOrderCount());
+            fillSummaryMeta(p, s.getLocalProductName(), s.getAttachmentJson());
+        }
+        for (OzonAccrualChartVo.ProductStat a : accrualMapper.selectChartProductStats(scopeShopId, null, month)) {
+            OzonSummaryChartVo.ProductStat p = productMap.computeIfAbsent(summaryKey(a.getSku()),
+                OzonReportServiceImpl::summaryProduct);
+            p.setAccrualAmountRub(a.getTotalAmountRub());
+            p.setAccrualCount(a.getAccrualCount());
+            fillSummaryMeta(p, StringUtils.isNotBlank(a.getProductName()) ? a.getProductName() : a.getOzonProductName(),
+                a.getAttachmentJson());
+        }
+        for (OzonReturnsChartVo.ProductStat r : returnsReportMapper.selectProductStats(scopeShopId, null, month)) {
+            OzonSummaryChartVo.ProductStat p = productMap.computeIfAbsent(summaryKey(r.getArticleNo()),
+                OzonReportServiceImpl::summaryProduct);
+            p.setReturnQty(r.getReturnQty());
+            p.setReturnShipments(r.getShipmentCount());
+            fillSummaryMeta(p, r.getLocalProductName(), r.getAttachmentJson());
+        }
+        List<OzonSummaryChartVo.ProductStat> products = new ArrayList<>(productMap.values());
+        // 默认按交货件数倒序，其次退货件数、订单净额，最后货号升序兜底，保证顺序稳定可复现。
+        Comparator<OzonSummaryChartVo.ProductStat> bySupply =
+            Comparator.comparingLong((OzonSummaryChartVo.ProductStat p) -> summaryQty(p.getSupplyQty())).reversed();
+        Comparator<OzonSummaryChartVo.ProductStat> byReturn =
+            Comparator.comparingLong((OzonSummaryChartVo.ProductStat p) -> summaryQty(p.getReturnQty())).reversed();
+        Comparator<OzonSummaryChartVo.ProductStat> byAmount =
+            Comparator.comparing((OzonSummaryChartVo.ProductStat p) -> summaryAmount(p.getAccrualAmountRub())).reversed();
+        products.sort(bySupply.thenComparing(byReturn).thenComparing(byAmount)
+            .thenComparing(p -> p.getSku() == null ? "" : p.getSku()));
+        chart.setProducts(products);
+        return chart;
+    }
+
+    /** 汇总图表的月份槽位（月份取三个主题的并集，缺的指标留空）。 */
+    private static OzonSummaryChartVo.MonthStat summaryMonth(String month) {
+        OzonSummaryChartVo.MonthStat stat = new OzonSummaryChartVo.MonthStat();
+        stat.setMonth(month);
+        return stat;
+    }
+
+    /** 汇总图表的货号槽位；无货号（订单侧平台级费用）归一成空串，与图表里的「未标注货号」一致。 */
+    private static OzonSummaryChartVo.ProductStat summaryProduct(String sku) {
+        OzonSummaryChartVo.ProductStat stat = new OzonSummaryChartVo.ProductStat();
+        stat.setSku(sku);
+        return stat;
+    }
+
+    private static String summaryKey(String sku) {
+        return sku == null ? "" : sku.trim();
+    }
+
+    private static long summaryQty(Integer value) {
+        return value == null ? 0L : value.longValue();
+    }
+
+    private static BigDecimal summaryAmount(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    /** 品名与图片三个主题谁先取到用谁，避免后面的空值把已有值覆盖掉。 */
+    private static void fillSummaryMeta(OzonSummaryChartVo.ProductStat target, String productName, String attachmentJson) {
+        if (StringUtils.isBlank(target.getProductName()) && StringUtils.isNotBlank(productName)) {
+            target.setProductName(productName);
+        }
+        if (StringUtils.isBlank(target.getAttachmentJson()) && StringUtils.isNotBlank(attachmentJson)) {
+            target.setAttachmentJson(attachmentJson);
+        }
     }
 
     @Override
