@@ -215,7 +215,8 @@ public class OzonReportServiceImpl implements IOzonReportService {
         // 汇总页把三个主题的汇总并在一起，口径与各自的图表页保持一致：
         // 三个主题各自「按月趋势」不带月份筛选（看全貌），「按货号排行」带月份筛选。
         // 汇总页不提供各主题的原生筛选（交货状态 / 费用分组 / 退货状态），一律按全量口径统计。
-        // 实现上直接复用三个 Mapper 已有的聚合方法，只是把筛选参数传 null，不新增 SQL。
+        // 实现上复用三个 Mapper 已有的聚合方法，筛选参数传 null；只有订单侧因为要按「数量」而非「金额」展示，
+        // 额外复用订单 Mapper 里两条专门的去重数量聚合（同一个应计费用编号只计一次）。
 
         // ---- 按月趋势：三个主题各自聚合后按月份取并集，月份升序 ----
         Map<String, OzonSummaryChartVo.MonthStat> monthMap = new TreeMap<>();
@@ -224,9 +225,9 @@ public class OzonReportServiceImpl implements IOzonReportService {
             m.setSupplyQty(s.getTotalQuantity());
             m.setSupplyOrders(s.getOrderCount());
         }
-        for (OzonAccrualChartVo.MonthStat a : accrualMapper.selectChartMonthStats(scopeShopId, null)) {
+        for (OzonAccrualChartVo.MonthStat a : accrualMapper.selectChartQtyMonths(scopeShopId)) {
             OzonSummaryChartVo.MonthStat m = monthMap.computeIfAbsent(a.getMonth(), OzonReportServiceImpl::summaryMonth);
-            m.setAccrualAmountRub(a.getTotalAmountRub());
+            m.setAccrualQty(a.getTotalQuantity());
             m.setAccrualCount(a.getAccrualCount());
         }
         for (OzonReturnsChartVo.MonthStat r : returnsReportMapper.selectMonthStats(scopeShopId, null)) {
@@ -246,10 +247,10 @@ public class OzonReportServiceImpl implements IOzonReportService {
             p.setSupplyOrders(s.getOrderCount());
             fillSummaryMeta(p, s.getLocalProductName(), s.getAttachmentJson());
         }
-        for (OzonAccrualChartVo.ProductStat a : accrualMapper.selectChartProductStats(scopeShopId, null, month)) {
+        for (OzonAccrualChartVo.ProductStat a : accrualMapper.selectChartQtyProducts(scopeShopId, month)) {
             OzonSummaryChartVo.ProductStat p = productMap.computeIfAbsent(summaryKey(a.getSku()),
                 OzonReportServiceImpl::summaryProduct);
-            p.setAccrualAmountRub(a.getTotalAmountRub());
+            p.setAccrualQty(a.getTotalQuantity());
             p.setAccrualCount(a.getAccrualCount());
             fillSummaryMeta(p, StringUtils.isNotBlank(a.getProductName()) ? a.getProductName() : a.getOzonProductName(),
                 a.getAttachmentJson());
@@ -262,14 +263,15 @@ public class OzonReportServiceImpl implements IOzonReportService {
             fillSummaryMeta(p, r.getLocalProductName(), r.getAttachmentJson());
         }
         List<OzonSummaryChartVo.ProductStat> products = new ArrayList<>(productMap.values());
-        // 默认按交货件数倒序，其次退货件数、订单净额，最后货号升序兜底，保证顺序稳定可复现。
+        // 默认按交货件数倒序，其次订单数量、退货件数（与页面上「交货 / 订单 / 退货」的展示顺序一致），
+        // 最后货号升序兜底，保证顺序稳定可复现。
         Comparator<OzonSummaryChartVo.ProductStat> bySupply =
             Comparator.comparingLong((OzonSummaryChartVo.ProductStat p) -> summaryQty(p.getSupplyQty())).reversed();
+        Comparator<OzonSummaryChartVo.ProductStat> byAccrual =
+            Comparator.comparingLong((OzonSummaryChartVo.ProductStat p) -> summaryQty(p.getAccrualQty())).reversed();
         Comparator<OzonSummaryChartVo.ProductStat> byReturn =
             Comparator.comparingLong((OzonSummaryChartVo.ProductStat p) -> summaryQty(p.getReturnQty())).reversed();
-        Comparator<OzonSummaryChartVo.ProductStat> byAmount =
-            Comparator.comparing((OzonSummaryChartVo.ProductStat p) -> summaryAmount(p.getAccrualAmountRub())).reversed();
-        products.sort(bySupply.thenComparing(byReturn).thenComparing(byAmount)
+        products.sort(bySupply.thenComparing(byAccrual).thenComparing(byReturn)
             .thenComparing(p -> p.getSku() == null ? "" : p.getSku()));
         chart.setProducts(products);
         return chart;
@@ -295,10 +297,6 @@ public class OzonReportServiceImpl implements IOzonReportService {
 
     private static long summaryQty(Integer value) {
         return value == null ? 0L : value.longValue();
-    }
-
-    private static BigDecimal summaryAmount(BigDecimal value) {
-        return value == null ? BigDecimal.ZERO : value;
     }
 
     /** 品名与图片三个主题谁先取到用谁，避免后面的空值把已有值覆盖掉。 */

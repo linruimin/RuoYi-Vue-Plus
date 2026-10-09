@@ -81,6 +81,77 @@ public interface OzonAccrualReportMapper extends BaseMapperPlus<OzonAccrualRepor
                                                                 @Param("month") String month);
 
     /**
+     * 汇总图表「订单数量（按月）」：同一个应计费用编号只计一次数量。
+     * 一笔订单在应计明细里横跨「销售 / Ozon佣金 / 配送服务…」多行，各行 quantity 相同，
+     * 直接求和会把同一批货重复累加（全部行 381,845 vs 去重后 76,747）——所以先按 accrual_id 取一次数量
+     * （取 MAX，兼容极少数带合计行的情况），再按月汇总。
+     * 编号归属月份取该编号最早的 accrual_date，保证「月合计 = 货号合计」。
+     * 注意：带 &lt;script&gt; 的 @Select 里不能出现 &lt;&gt;，字符串比较一律用 !=。
+     */
+    @Select("""
+        <script>
+        SELECT DATE_FORMAT(k.first_date, '%Y-%m') AS month,
+               SUM(k.qty) AS total_quantity,
+               COUNT(*) AS accrual_count
+        FROM (
+          SELECT COALESCE(NULLIF(TRIM(a.accrual_id), ''), CONCAT('__r', a.row_id)) AS acc_id,
+                 MIN(a.accrual_date) AS first_date,
+                 MAX(a.quantity) AS qty
+          FROM ozon_accruals a
+          <where>
+            <if test="shopId != null">a.shop_id = #{shopId}</if>
+          </where>
+          GROUP BY acc_id
+        ) k
+        GROUP BY DATE_FORMAT(k.first_date, '%Y-%m')
+        ORDER BY month
+        </script>
+        """)
+    List<OzonAccrualChartVo.MonthStat> selectChartQtyMonths(@Param("shopId") Long shopId);
+
+    /**
+     * 汇总图表「订单数量（按货号）」：口径同 {@link #selectChartQtyMonths}。
+     * 货号取该编号首行（row_id 最小）的 seller_sku —— 只有 54 个编号跨货号，影响不到 0.1%，
+     * 这样能保证「按货号合计 = 按月合计」。品名与图片的兜底逻辑与订单图表一致。
+     */
+    @Select("""
+        <script>
+        SELECT t.sku, t.total_quantity, t.accrual_count, t.ozon_product_name,
+               p.name AS product_name,
+          (SELECT JSON_ARRAYAGG(JSON_OBJECT('id',a3.id,'fileName',a3.file_name,'mimeType',a3.mime_type,'cosUrl',a3.cos_url))
+             FROM attachment a3
+            WHERE a3.source_table='product' AND a3.feishu_record_id=p.feishu_record_id
+              AND a3.field_name='货品图片' AND a3.cos_url IS NOT NULL AND a3.cos_url != '') AS attachment_json
+        FROM (
+          SELECT COALESCE(NULLIF(TRIM(a.seller_sku), ''), '') AS sku,
+                 SUM(k.qty) AS total_quantity,
+                 COUNT(*) AS accrual_count,
+                 COALESCE(MAX(NULLIF(TRIM(a.product_name), '')), '') AS ozon_product_name
+          FROM (
+            SELECT COALESCE(NULLIF(TRIM(a2.accrual_id), ''), CONCAT('__r', a2.row_id)) AS acc_id,
+                   MIN(a2.accrual_date) AS first_date,
+                   MAX(a2.quantity) AS qty,
+                   MIN(a2.row_id) AS first_row_id
+            FROM ozon_accruals a2
+            <where>
+              <if test="shopId != null">a2.shop_id = #{shopId}</if>
+            </where>
+            GROUP BY acc_id
+          ) k
+          JOIN ozon_accruals a ON a.row_id = k.first_row_id
+          <where>
+            <if test="month != null and month != ''">DATE_FORMAT(k.first_date, '%Y-%m') = #{month}</if>
+          </where>
+          GROUP BY COALESCE(NULLIF(TRIM(a.seller_sku), ''), '')
+        ) t
+        LEFT JOIN product p ON p.id = (SELECT MIN(p2.id) FROM product p2 WHERE p2.article_no = t.sku COLLATE utf8mb4_unicode_ci)
+        ORDER BY t.total_quantity DESC
+        </script>
+        """)
+    List<OzonAccrualChartVo.ProductStat> selectChartQtyProducts(@Param("shopId") Long shopId,
+                                                               @Param("month") String month);
+
+    /**
      * 订单图表下钻：某个卖家货号（或某个月份）下的订单费用原始明细行，分页返回。
      * 单货号单月最多 3.5 万行，必须后端分页，不能一次性返回。
      * sku 为 null 表示不过滤；sku 为空串表示只看「没有卖家货号」的明细。

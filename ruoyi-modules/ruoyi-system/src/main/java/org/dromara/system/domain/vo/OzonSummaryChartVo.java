@@ -2,17 +2,17 @@ package org.dromara.system.domain.vo;
 
 import lombok.Data;
 import java.io.Serializable;
-import java.math.BigDecimal;
 import java.util.List;
 
 /**
  * 汇总图表数据：同一次查询把「交货 / 订单 / 退货」三个主题的月度与货号汇总并到一起，
  * 供「0.0汇总图表」一张页面对比三者的走势与结构。
  * <p>
- * 口径与各自的图表页完全一致：
+ * 口径与各自的图表页基本一致：
  * 「按月趋势」不受月份筛选影响（始终展示全部月份），「按货号排行」受月份筛选影响；
- * 交货数量按明细「完成日期」归月、退货件数按「退货日期」归月、订单金额按「应计日期」归月。
- * 单位：交货 / 退货为「件」，订单为「总计（RUB）净额」（销售额与各项应计费用正负相抵）。
+ * 交货数量按明细「完成日期」归月、退货件数按「退货日期」归月、订单数量按「应计日期」归月。
+ * 单位：三个主题统一为「件」——订单数量 = 同一个应计费用编号只计一次（取该编号各行 quantity 的最大值），
+ * 因为一笔订单在应计明细里横跨「销售 / 佣金 / 配送」多行，直接求和会重复累加。
  */
 @Data
 public class OzonSummaryChartVo implements Serializable {
@@ -31,8 +31,8 @@ public class OzonSummaryChartVo implements Serializable {
         private Integer supplyQty;
         /** 交货申请数（按 order_id 去重）。 */
         private Integer supplyOrders;
-        /** 订单费用总计（RUB）净额（归月口径＝明细应计日期）。 */
-        private BigDecimal accrualAmountRub;
+        /** 订单数量：同一个应计费用编号只计一次（归月口径＝该编号最早的应计日期）。 */
+        private Integer accrualQty;
         /** 订单费用编号数（按 accrual_id 去重）。 */
         private Long accrualCount;
         /** 退货件数（归月口径＝退货日期）。 */
@@ -54,8 +54,8 @@ public class OzonSummaryChartVo implements Serializable {
         private Integer supplyQty;
         /** 交货申请数（按 order_id 去重）。 */
         private Integer supplyOrders;
-        /** 订单费用总计（RUB）净额。 */
-        private BigDecimal accrualAmountRub;
+        /** 订单数量：同一个应计费用编号只计一次（口径同 MonthStat.accrualQty）。 */
+        private Integer accrualQty;
         /** 订单费用编号数（按 accrual_id 去重）。 */
         private Long accrualCount;
         /** 退货件数。 */
