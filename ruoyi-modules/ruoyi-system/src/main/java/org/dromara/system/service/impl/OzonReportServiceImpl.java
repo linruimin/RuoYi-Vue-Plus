@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 /** 查询宿主 MySQL 的现有报表，不复制或修改源数据。 */
 @DS("ozon")
@@ -67,6 +68,14 @@ public class OzonReportServiceImpl implements IOzonReportService {
      * 所以约定用这个非空哨兵显式表达「只看没有卖家货号的明细」，进 Service 后翻译回空串。
      */
     private static final String NO_SKU_TOKEN = "__NO_SKU__";
+
+    /**
+     * 汇总图表（0.0）交货侧固定口径：只统计「已完成」的交货申请。
+     * 交货明细里有已完成 / 已取消 / 已逾期 / 已准备发运 / 在发运点 / 输入数据六种状态，
+     * 后四种（以及已取消）并不代表真正发出去货，混在一起会让汇总数虚高
+     * （全量 88,835 件 vs 已完成 54,974 件）。这里与「0.1.交货图表」的默认状态保持一致。
+     */
+    private static final String SUPPLY_DONE_STATUS = "已完成";
 
     @Override
     public PageResult<OzonMonthlyReportVo> monthly(OzonReportQuery q, PageQuery input) {
@@ -214,13 +223,14 @@ public class OzonReportServiceImpl implements IOzonReportService {
     public OzonSummaryChartVo summaryChart(Long scopeShopId, String month) {
         // 汇总页把三个主题的汇总并在一起，口径与各自的图表页保持一致：
         // 三个主题各自「按月趋势」不带月份筛选（看全貌），「按货号排行」带月份筛选。
-        // 汇总页不提供各主题的原生筛选（交货状态 / 费用分组 / 退货状态），一律按全量口径统计。
-        // 实现上复用三个 Mapper 已有的聚合方法，筛选参数传 null；只有订单侧因为要按「数量」而非「金额」展示，
-        // 额外复用订单 Mapper 里两条专门的去重数量聚合（同一个应计费用编号只计一次）。
+        // 汇总页不提供各主题的原生筛选（交货状态 / 费用分组 / 退货状态）。其中交货侧固定按「已完成」统计
+        // （与「0.1.交货图表」的默认状态一致，见 SUPPLY_DONE_STATUS），退货按全量口径；
+        // 订单侧因为要按「数量」而非「金额」展示，额外复用订单 Mapper 里两条专门的去重数量聚合
+        // （同一个应计费用编号只计一次）。
 
         // ---- 按月趋势：三个主题各自聚合后按月份取并集，月份升序 ----
         Map<String, OzonSummaryChartVo.MonthStat> monthMap = new TreeMap<>();
-        for (OzonSupplyChartVo.MonthStat s : supplyMapper.selectMonthStats(scopeShopId, null)) {
+        for (OzonSupplyChartVo.MonthStat s : supplyMapper.selectMonthStats(scopeShopId, SUPPLY_DONE_STATUS)) {
             OzonSummaryChartVo.MonthStat m = monthMap.computeIfAbsent(s.getMonth(), OzonReportServiceImpl::summaryMonth);
             m.setSupplyQty(s.getTotalQuantity());
             m.setSupplyOrders(s.getOrderCount());
@@ -236,11 +246,16 @@ public class OzonReportServiceImpl implements IOzonReportService {
             m.setReturnShipments(r.getShipmentCount());
         }
         OzonSummaryChartVo chart = new OzonSummaryChartVo();
-        chart.setMonths(new ArrayList<>(monthMap.values()));
+        // 三个指标都是空 / 0 的月份没有可展示的内容，留着只会变成一根都没有的空轴位。
+        // 典型例子：2026-04 只有「已取消」的交货，交货改成只算已完成后该月三个指标全为 0 —— 直接去掉。
+        List<OzonSummaryChartVo.MonthStat> monthList = monthMap.values().stream()
+            .filter(OzonReportServiceImpl::summaryHasData)
+            .collect(Collectors.toCollection(ArrayList::new));
+        chart.setMonths(monthList);
 
         // ---- 按货号排行：三个主题各自聚合后按卖家货号归并（交货 sku / 订单 seller_sku / 退货 article_no）----
         Map<String, OzonSummaryChartVo.ProductStat> productMap = new LinkedHashMap<>();
-        for (OzonSupplyStatsVo s : supplyMapper.selectProductStats(scopeShopId, null, month)) {
+        for (OzonSupplyStatsVo s : supplyMapper.selectProductStats(scopeShopId, SUPPLY_DONE_STATUS, month)) {
             OzonSummaryChartVo.ProductStat p = productMap.computeIfAbsent(summaryKey(s.getSku()),
                 OzonReportServiceImpl::summaryProduct);
             p.setSupplyQty(s.getTotalQuantity());
@@ -262,7 +277,10 @@ public class OzonReportServiceImpl implements IOzonReportService {
             p.setReturnShipments(r.getShipmentCount());
             fillSummaryMeta(p, r.getLocalProductName(), r.getAttachmentJson());
         }
-        List<OzonSummaryChartVo.ProductStat> products = new ArrayList<>(productMap.values());
+        // 同月份：三个指标全为空 / 0 的货号（例如只有「未完成交货」或只有平台级零数量费用）不占位。
+        List<OzonSummaryChartVo.ProductStat> products = productMap.values().stream()
+            .filter(OzonReportServiceImpl::summaryHasData)
+            .collect(Collectors.toCollection(ArrayList::new));
         // 默认按交货件数倒序，其次订单数量、退货件数（与页面上「交货 / 订单 / 退货」的展示顺序一致），
         // 最后货号升序兜底，保证顺序稳定可复现。
         Comparator<OzonSummaryChartVo.ProductStat> bySupply =
@@ -297,6 +315,16 @@ public class OzonReportServiceImpl implements IOzonReportService {
 
     private static long summaryQty(Integer value) {
         return value == null ? 0L : value.longValue();
+    }
+
+    /** 月份槽位是否有内容：三个指标至少有一个不为空且不等于 0。 */
+    private static boolean summaryHasData(OzonSummaryChartVo.MonthStat m) {
+        return summaryQty(m.getSupplyQty()) + summaryQty(m.getAccrualQty()) + summaryQty(m.getReturnQty()) > 0;
+    }
+
+    /** 货号槽位是否有内容：三个指标至少有一个不为空且不等于 0。 */
+    private static boolean summaryHasData(OzonSummaryChartVo.ProductStat p) {
+        return summaryQty(p.getSupplyQty()) + summaryQty(p.getAccrualQty()) + summaryQty(p.getReturnQty()) > 0;
     }
 
     /** 品名与图片三个主题谁先取到用谁，避免后面的空值把已有值覆盖掉。 */
