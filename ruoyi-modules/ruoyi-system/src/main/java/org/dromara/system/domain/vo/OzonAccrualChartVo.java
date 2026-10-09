@@ -25,11 +25,11 @@ public class OzonAccrualChartVo implements Serializable {
         private String month;
         /** 总计（RUB）净额。 */
         private BigDecimal totalAmountRub;
-        /** 费用编号数（按 accrual_id 去重）。 */
+        /** 费用编号数（按 accrual_id 去重）。汇总图表填充的是销售记录数（产品月报 sales_record_count）。 */
         private Long accrualCount;
         /**
-         * 订单数量：同一个应计费用编号只计一次（取该编号所有费用行 quantity 的最大值），
-         * 避免一笔订单横跨「销售 / 佣金 / 配送」多行被重复累加。只有汇总图表的专用查询会填充。
+         * 订单数量：产品月报的「售出件数」（sold_units）合计。
+         * 订单图表（1.1）按金额展示用不到它；只有汇总图表（0.0）的月报口径查询会填充。
          */
         private Integer totalQuantity;
     }
@@ -45,9 +45,9 @@ public class OzonAccrualChartVo implements Serializable {
         private String ozonProductName;
         /** 总计（RUB）净额。 */
         private BigDecimal totalAmountRub;
-        /** 费用编号数（按 accrual_id 去重）。 */
+        /** 费用编号数（按 accrual_id 去重）。汇总图表填充的是销售记录数（产品月报 sales_record_count）。 */
         private Long accrualCount;
-        /** 订单数量：同一个应计费用编号只计一次（口径同 MonthStat.totalQuantity）。 */
+        /** 订单数量：产品月报的「售出件数」（口径同 MonthStat.totalQuantity）。 */
         private Integer totalQuantity;
         /** 产品库「货品图片」的附件信息（JSON 字符串）。 */
         private String attachmentJson;

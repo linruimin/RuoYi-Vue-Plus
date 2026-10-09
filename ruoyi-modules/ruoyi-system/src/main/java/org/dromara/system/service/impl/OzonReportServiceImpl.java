@@ -224,9 +224,11 @@ public class OzonReportServiceImpl implements IOzonReportService {
         // 汇总页把三个主题的汇总并在一起，口径与各自的图表页保持一致：
         // 三个主题各自「按月趋势」不带月份筛选（看全貌），「按货号排行」带月份筛选。
         // 汇总页不提供各主题的原生筛选（交货状态 / 费用分组 / 退货状态）。其中交货侧固定按「已完成」统计
-        // （与「0.1.交货图表」的默认状态一致，见 SUPPLY_DONE_STATUS），退货按全量口径；
-        // 订单侧因为要按「数量」而非「金额」展示，额外复用订单 Mapper 里两条专门的去重数量聚合
-        // （同一个应计费用编号只计一次）。
+        // （与「0.1.交货图表」的默认状态一致，见 SUPPLY_DONE_STATUS），退货按全量口径。
+        // 订单侧展示「售出件数」而不是应计金额，数据源是产品月报的 sold_units：应计明细是按「费用」铺开的
+        // （一笔销售横跨「销售收入 / 佣金 / 折扣积分 / 物流…」七八行，还混着大量与卖货无关的服务费单据），
+        // 无论怎么按编号去重都不等于「卖出多少件」；产品月报的 sold_units 才是真实售出件数，
+        // 与交货 / 退货同为「件」，三个指标这才真正可比。
 
         // ---- 按月趋势：三个主题各自聚合后按月份取并集，月份升序 ----
         Map<String, OzonSummaryChartVo.MonthStat> monthMap = new TreeMap<>();
@@ -235,7 +237,7 @@ public class OzonReportServiceImpl implements IOzonReportService {
             m.setSupplyQty(s.getTotalQuantity());
             m.setSupplyOrders(s.getOrderCount());
         }
-        for (OzonAccrualChartVo.MonthStat a : accrualMapper.selectChartQtyMonths(scopeShopId)) {
+        for (OzonAccrualChartVo.MonthStat a : monthlyMapper.selectSoldUnitsMonths(scopeShopId)) {
             OzonSummaryChartVo.MonthStat m = monthMap.computeIfAbsent(a.getMonth(), OzonReportServiceImpl::summaryMonth);
             m.setAccrualQty(a.getTotalQuantity());
             m.setAccrualCount(a.getAccrualCount());
@@ -262,7 +264,7 @@ public class OzonReportServiceImpl implements IOzonReportService {
             p.setSupplyOrders(s.getOrderCount());
             fillSummaryMeta(p, s.getLocalProductName(), s.getAttachmentJson());
         }
-        for (OzonAccrualChartVo.ProductStat a : accrualMapper.selectChartQtyProducts(scopeShopId, month)) {
+        for (OzonAccrualChartVo.ProductStat a : monthlyMapper.selectSoldUnitsProducts(scopeShopId, month)) {
             OzonSummaryChartVo.ProductStat p = productMap.computeIfAbsent(summaryKey(a.getSku()),
                 OzonReportServiceImpl::summaryProduct);
             p.setAccrualQty(a.getTotalQuantity());
