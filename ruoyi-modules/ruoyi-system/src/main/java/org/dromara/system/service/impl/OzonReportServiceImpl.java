@@ -53,6 +53,16 @@ public class OzonReportServiceImpl implements IOzonReportService {
         "disposalCount", "soldUnits", "returnRate", "storageFeeRub", "disposalFeeRub", "maxPriceRub",
         "avgStorageDays", "firstReturnDate", "lastReturnDate");
 
+    /**
+     * 「未标注货号」哨兵值。
+     * 订单图表的货号槽位里有一个是 seller_sku 为空的行（平台级费用：广告点击、FBO 跨仓中转、仓储费、
+     * 债权债务抵销等，源数据本身就没填货号）。点击它下钻时前端不能把空串当参数下发：
+     * 若依的 tansParams 对 {@code value === ''} 会整条跳过，空串根本进不了 URL，后端收到 null
+     * 就当成「不过滤」，会把整库明细都返回（曾因此让弹窗显示 381,261 行而不是 780 行）。
+     * 所以约定用这个非空哨兵显式表达「只看没有卖家货号的明细」，进 Service 后翻译回空串。
+     */
+    private static final String NO_SKU_TOKEN = "__NO_SKU__";
+
     @Override
     public PageResult<OzonMonthlyReportVo> monthly(OzonReportQuery q, PageQuery input) {
         var w = new QueryWrapper<OzonMonthlyReport>();
@@ -183,12 +193,14 @@ public class OzonReportServiceImpl implements IOzonReportService {
                                                             String month, PageQuery input) {
         // 与图表口径保持一致：下钻行同样受店铺 / 费用分组 / 月份 / 货号过滤。
         // 单货号单月最多 3.5 万行，所以这里必须后端分页，不能像交货图表那样一次返回。
+        // 前端「未标注货号」下发的是哨兵值（空串会被 tansParams 丢弃），这里翻译成空串再进 SQL。
+        String skuFilter = NO_SKU_TOKEN.equals(sku) ? "" : sku;
         Page<OzonAccrualReportVo> page = boundedPage(input);
         String rowSort = sortField(input, LINE_SORT, "accrualDate");
         if ("shopName".equals(rowSort)) rowSort = "shopId";
         page.addOrder(order(rowSort, ascending(input)));
         page.addOrder(OrderItem.desc("row_id"));
-        Page<OzonAccrualReportVo> result = accrualMapper.selectChartRows(page, scopeShopId, serviceGroup, sku, month);
+        Page<OzonAccrualReportVo> result = accrualMapper.selectChartRows(page, scopeShopId, serviceGroup, skuFilter, month);
         fillShopNames(result.getRecords());
         return PageResult.build(result.getRecords(), result.getTotal());
     }

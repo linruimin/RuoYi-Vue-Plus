@@ -90,7 +90,8 @@ public class OzonReportController extends BaseController {
 
     /**
      * 订单图表下钻：某个卖家货号或某个月份下的订单费用原始明细行。
-     * sku 不传＝不按货号过滤；sku 传空串＝只看没有卖家货号的明细（对应图表里的「未标注货号」）。
+     * sku 不传＝不按货号过滤；sku 传 {@code __NO_SKU__}＝只看没有卖家货号的明细（图表里的「未标注货号」）。
+     * ⚠️ 不要用空串表达这个语义：若依 tansParams 会把空字符串参数整条丢掉，等于不传 → 返回全量。
      */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/accruals/chart-rows")
