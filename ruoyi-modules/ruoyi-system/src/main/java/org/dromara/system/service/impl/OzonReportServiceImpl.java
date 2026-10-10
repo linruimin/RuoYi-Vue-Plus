@@ -150,6 +150,12 @@ public class OzonReportServiceImpl implements IOzonReportService {
             .eqIfText(OzonSupplyReport::getApplicationNo, q.getApplicationNo()).build();
         // 状态为空（默认）时不限申请状态，即显示全部；“申请状态”筛选选中具体状态才过滤。
         if (StringUtils.isNotBlank(q.getStatus())) w.eq(OzonSupplyReport::getStatus, q.getStatus());
+        // 全局店铺范围（首页选的店铺）：「全部」时前端不下发，这里也就不加条件。
+        // ⚠️ 列表页原先漏了这段 —— 图表与下钻都按店铺过滤，只有列表没有，
+        // 表现就是「切换店铺后 0.交货申请明细 的数据完全不变」（2026-10-10 用户报）。
+        // ⚠️ 这里必须用 apply 而不是 eq("shop_id", x)：w 是 LambdaQueryWrapper，eq 只接受 SFunction，
+        //    字符串列名编译不过；apply 的 {0} 仍是参数占位，无注入风险。
+        if (q.getScopeShopId() != null) w.apply("shop_id = {0}", q.getScopeShopId());
         String sort = sortField(input, SUPPLY_SORT, "completionDate");
         Page<OzonSupplyReport> page = boundedPage(input);
         String expression = StringUtils.toUnderScoreCase(sort);
