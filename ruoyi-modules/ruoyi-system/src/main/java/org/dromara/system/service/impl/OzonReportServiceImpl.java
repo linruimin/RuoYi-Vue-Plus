@@ -84,6 +84,9 @@ public class OzonReportServiceImpl implements IOzonReportService {
         if (StringUtils.isNotBlank(q.getOzonSku())) w.eq("ozon_sku", q.getOzonSku());
         if (StringUtils.isNotBlank(q.getProductName())) w.like("product_name", q.getProductName());
         if (q.getReportMonth()!=null) w.eq("report_month",q.getReportMonth().withDayOfMonth(1));
+        // 全局店铺范围（首页选的店铺）：「全部」时前端不下发，这里也就不加条件。
+        // 月报表自 2026-10-10 起带 shop_id（ozon_product_monthly_summary），在此之前的数据已重跑补齐。
+        if (q.getScopeShopId() != null) w.eq("shop_id", q.getScopeShopId());
         boolean sku = "sku".equals(q.getGroupBy());
         String group = sku ? "sellerSku" : "reportMonth";
         String sort = sortField(input, MONTHLY_SORT, sku ? "reportMonth" : "finalTakeHomeRub");
@@ -94,6 +97,7 @@ public class OzonReportServiceImpl implements IOzonReportService {
         if (!grouped || !group.equals(sort)) page.addOrder(order(sort, ascending(input)));
         page.addOrder(OrderItem.desc("row_id"));
         Page<OzonMonthlyReportVo> result = monthlyMapper.selectViewPage(page, w);
+        fillMonthlyShopNames(result.getRecords());
         return PageResult.build(result.getRecords(), result.getTotal());
     }
 
@@ -397,13 +401,27 @@ public class OzonReportServiceImpl implements IOzonReportService {
     /** 明细为只读实体查询，店铺名按 shop 表回填。 */
     private void fillShopNames(List<OzonAccrualReportVo> rows) {
         if (rows.isEmpty()) return;
+        Map<Long, String> names = shopNames();
+        for (OzonAccrualReportVo row : rows) {
+            row.setShopName(names.get(row.getShopId()));
+        }
+    }
+
+    /** 产品月报的店铺名（「全部店铺」时列表里要能分辨每行属于哪个店）。 */
+    private void fillMonthlyShopNames(List<OzonMonthlyReportVo> rows) {
+        if (rows.isEmpty()) return;
+        Map<Long, String> names = shopNames();
+        for (OzonMonthlyReportVo row : rows) {
+            row.setShopName(names.get(row.getShopId()));
+        }
+    }
+
+    private Map<Long, String> shopNames() {
         Map<Long, String> names = new HashMap<>();
         for (OzonBizShop shop : shopMapper.selectList(new QueryWrapper<>())) {
             names.put(shop.getId(), shop.getName());
         }
-        for (OzonAccrualReportVo row : rows) {
-            row.setShopName(names.get(row.getShopId()));
-        }
+        return names;
     }
 
     @Override

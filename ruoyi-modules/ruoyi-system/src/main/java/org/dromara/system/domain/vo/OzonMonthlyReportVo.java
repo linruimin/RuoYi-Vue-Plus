@@ -29,6 +29,11 @@ public class OzonMonthlyReportVo implements Serializable {
     /** 记录编号。 */
     private String rowId;
 
+    /** 店铺 id（→ shop.id）；列表按它过滤「全局店铺」。 */
+    private Long shopId;
+    /** 店铺名称，列表里展示用。 */
+    private String shopName;
+
     /** 统计月份。 */
     private LocalDate reportMonth;
 

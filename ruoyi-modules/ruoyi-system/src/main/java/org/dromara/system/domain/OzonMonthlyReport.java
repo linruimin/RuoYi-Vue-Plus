@@ -16,6 +16,9 @@ public class OzonMonthlyReport implements Serializable {
     @TableId("row_id")
     private Long rowId;
 
+    /** 店铺 id（→ shop.id）。2026-10-10 起按店铺拆分，之前的记录为 0。 */
+    private Long shopId;
+
     /** 统计月份。 */
     private LocalDate reportMonth;
 
