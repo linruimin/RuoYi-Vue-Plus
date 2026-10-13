@@ -34,11 +34,11 @@ public interface IOzonReportService {
     /** 退货图表下钻：某个卖家货号或某个月份下的退货明细行。 */
     java.util.List<OzonBizReturnsVo> returnsChartRows(Long scopeShopId, String status, String month, String articleNo);
 
-    /** 订单图表：按月趋势 + 按货号排行（金额＝总计 RUB 净额），一次查询保证口径一致。 */
-    OzonAccrualChartVo accrualChart(Long scopeShopId, String serviceGroup, String month);
+    /** 订单图表：按月趋势 + 按货号排行（金额＝总计 RUB 净额），一次查询保证口径一致；数据来自产品月报。 */
+    OzonAccrualChartVo accrualChart(Long scopeShopId, String month);
 
     /** 订单图表下钻：某个卖家货号或某个月份下的订单费用原始明细行，后端分页返回。 */
-    PageResult<OzonAccrualReportVo> accrualChartRows(Long scopeShopId, String serviceGroup, String sku, String month, PageQuery page);
+    PageResult<OzonAccrualReportVo> accrualChartRows(Long scopeShopId, String sku, String month, PageQuery page);
 
     /**
      * 汇总图表：把交货 / 订单 / 退货三个主题的月度与货号汇总并到一起，一次查询保证口径一致。

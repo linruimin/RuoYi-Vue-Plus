@@ -101,4 +101,73 @@ public interface OzonMonthlyReportMapper extends BaseMapperPlus<OzonMonthlyRepor
         """)
     List<OzonAccrualChartVo.ProductStat> selectSoldUnitsProducts(@Param("shopId") Long shopId,
                                                                 @Param("month") String month);
+
+    /**
+     * 订单图表（1.1）「按月趋势」：金额 = 全部货号净额之和（含「未标注货号」合成行），费用编号数取**月级**精确值。
+     * 月份升序，始终展示全部月份（不受月份筛选影响）。
+     * <p>
+     * 月级编号数用 {@code month_accrual_count} 而不是 {@code SUM(accrual_count)}：一个应计编号可以同时落在
+     * 多个货号上（实测 54 个，最多跨 4 个货号），把货号级的编号数相加会重复计数
+     * （2026-06 真实 13,411 / 相加 13,438）。两列都由月度汇总后的重建脚本回填，见 mysql/12_*.sql。
+     */
+    @Select("""
+        <script>
+        SELECT DATE_FORMAT(m.report_month, '%Y-%m') AS month,
+               SUM(m.total_amount_rub) AS total_amount_rub,
+               SUM(m.month_accrual_count) AS accrual_count
+        FROM ozon_product_monthly_summary m
+        <where>
+          <if test="shopId != null">m.shop_id = #{shopId}</if>
+        </where>
+        GROUP BY DATE_FORMAT(m.report_month, '%Y-%m')
+        ORDER BY month
+        </script>
+        """)
+    List<OzonAccrualChartVo.MonthStat> selectChartMonthStats(@Param("shopId") Long shopId);
+
+    /**
+     * 订单图表（1.1）「按货号排行」：按卖家货号汇总净金额与费用编号数，金额倒序（负数在后）。
+     * 月份为空表示不按月份过滤；无卖家货号的费用落在 {@code sku = ''} 这一根柱子上（前端显示「未标注货号」）。
+     * 品名与图片的兜底逻辑与汇总图表一致（产品库优先，退回月报自带的商品名称）。
+     * <p>
+     * 费用编号数分两种口径，靠 month 是否下发切换（两列都由重建脚本回填，见 mysql/12_*.sql）：
+     * <ul>
+     *   <li>选了月份 → {@code SUM(accrual_count)}：该月内按货号去重。</li>
+     *   <li>不选月份 → {@code SUM(accrual_count_total)}：该货号**跨月去重**；
+     *       不能用各月 accrual_count 相加，一个编号跨月会被数两次（实测 205 个跨月编号）。</li>
+     * </ul>
+     * <p>
+     * 🚨 {@code <where>} 只会去掉**第一段**内容的开头 AND，不会在两个 {@code <if>} 之间自动补 AND，
+     * 所以非首位的 {@code <if>} 必须自己以 AND 开头（曾漏写 → 选店铺 + 选月份时拼出语法错误 → 接口 500）。
+     * 🚨 带 {@code <script>} 的 @Select 里不能出现 {@code <>}，字符串比较一律用 !=。
+     */
+    @Select("""
+        <script>
+        SELECT t.sku, t.total_amount_rub, t.accrual_count, t.ozon_product_name,
+               p.name AS product_name,
+          (SELECT JSON_ARRAYAGG(JSON_OBJECT('id',a.id,'fileName',a.file_name,'mimeType',a.mime_type,'cosUrl',a.cos_url))
+             FROM attachment a
+            WHERE a.source_table='product' AND a.feishu_record_id=p.feishu_record_id
+              AND a.field_name='货品图片' AND a.cos_url IS NOT NULL AND a.cos_url != '') AS attachment_json
+        FROM (
+          SELECT TRIM(m.seller_sku) AS sku,
+                 SUM(m.total_amount_rub) AS total_amount_rub,
+                 <choose>
+                   <when test="month != null and month != ''">SUM(m.accrual_count)</when>
+                   <otherwise>SUM(m.accrual_count_total)</otherwise>
+                 </choose> AS accrual_count,
+                 COALESCE(MAX(NULLIF(TRIM(m.product_name), '')), '') AS ozon_product_name
+          FROM ozon_product_monthly_summary m
+          <where>
+            <if test="shopId != null">m.shop_id = #{shopId}</if>
+            <if test="month != null and month != ''">AND DATE_FORMAT(m.report_month, '%Y-%m') = #{month}</if>
+          </where>
+          GROUP BY TRIM(m.seller_sku)
+        ) t
+        LEFT JOIN product p ON p.id = (SELECT MIN(p2.id) FROM product p2 WHERE p2.article_no = t.sku COLLATE utf8mb4_unicode_ci)
+        ORDER BY t.total_amount_rub DESC
+        </script>
+        """)
+    List<OzonAccrualChartVo.ProductStat> selectChartProductStats(@Param("shopId") Long shopId,
+                                                                @Param("month") String month);
 }

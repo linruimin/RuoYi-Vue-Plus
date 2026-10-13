@@ -79,13 +79,12 @@ public class OzonReportController extends BaseController {
         return R.ok(reportService.returnsChartRows(scopeShopId, status, month, articleNo));
     }
 
-    /** 订单图表：按月趋势 + 按货号排行（金额＝总计 RUB 净额）；店铺 / 费用分组 / 月份为空表示不过滤。 */
+    /** 订单图表：按月趋势 + 按货号排行（金额＝总计 RUB 净额）；店铺 / 月份为空表示不过滤。数据来自产品月报。 */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/accruals/chart")
     public R<OzonAccrualChartVo> accrualChart(@RequestParam(required = false) Long scopeShopId,
-                                              @RequestParam(required = false) String serviceGroup,
                                               @RequestParam(required = false) String month) {
-        return R.ok(reportService.accrualChart(scopeShopId, serviceGroup, month));
+        return R.ok(reportService.accrualChart(scopeShopId, month));
     }
 
     /**
@@ -96,11 +95,10 @@ public class OzonReportController extends BaseController {
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/accruals/chart-rows")
     public R<PageResult<OzonAccrualReportVo>> accrualChartRows(@RequestParam(required = false) Long scopeShopId,
-                                                              @RequestParam(required = false) String serviceGroup,
                                                               @RequestParam(required = false) String sku,
                                                               @RequestParam(required = false) String month,
                                                               PageQuery page) {
-        return R.ok(reportService.accrualChartRows(scopeShopId, serviceGroup, sku, month, page));
+        return R.ok(reportService.accrualChartRows(scopeShopId, sku, month, page));
     }
 
     /**

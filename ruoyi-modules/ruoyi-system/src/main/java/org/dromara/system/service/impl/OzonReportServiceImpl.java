@@ -86,6 +86,9 @@ public class OzonReportServiceImpl implements IOzonReportService {
         // 全局店铺范围（首页选的店铺）：「全部」时前端不下发，这里也就不加条件。
         // 月报表自 2026-10-10 起带 shop_id（ozon_product_monthly_summary），在此之前的数据已重跑补齐。
         if (q.getScopeShopId() != null) w.eq("shop_id", q.getScopeShopId());
+        // 「未标注货号」合成行（seller_sku='' AND ozon_sku=0）只给订单图表承载金额，
+        // 不是产品销售行 —— 列表必须排除（判据与 mysql/12_*.sql 生成合成行时一致）。
+        w.apply("NOT (seller_sku = '' AND ozon_sku = 0)");
         boolean sku = "sku".equals(q.getGroupBy());
         String group = sku ? "sellerSku" : "reportMonth";
         String sort = sortField(input, MONTHLY_SORT, sku ? "reportMonth" : "finalTakeHomeRub");
@@ -204,19 +207,22 @@ public class OzonReportServiceImpl implements IOzonReportService {
     }
 
     @Override
-    public OzonAccrualChartVo accrualChart(Long scopeShopId, String serviceGroup, String month) {
-        // 空分组不限费用分组、空月份不限月份、店铺为空不限店铺；两个维度共用同一筛选，保证口径一致。
+    public OzonAccrualChartVo accrualChart(Long scopeShopId, String month) {
+        // 图表读**产品月报**而不是源表 ozon_accruals（38.6 万行按表达式分组，接口实测 9,059ms）：
+        // 「按 (店铺, 月, 货号) 的净额」与月报的 net_sales_income_rub 逐格一致，两者本来就是同样的归月口径。
+        // 原先还有一个「费用分组」筛选（`ozon_accruals.service_group`），它会把「一笔销售的费用」拆散，
+        // 用处不大且无法由月报承载，已整体去掉。
         // 「按月趋势」始终展示全部月份（不受 month 影响），「按货号排行」受 month 筛选。
         OzonAccrualChartVo chart = new OzonAccrualChartVo();
-        chart.setMonths(accrualMapper.selectChartMonthStats(scopeShopId, serviceGroup));
-        chart.setProducts(accrualMapper.selectChartProductStats(scopeShopId, serviceGroup, month));
+        chart.setMonths(monthlyMapper.selectChartMonthStats(scopeShopId));
+        chart.setProducts(monthlyMapper.selectChartProductStats(scopeShopId, month));
         return chart;
     }
 
     @Override
-    public PageResult<OzonAccrualReportVo> accrualChartRows(Long scopeShopId, String serviceGroup, String sku,
+    public PageResult<OzonAccrualReportVo> accrualChartRows(Long scopeShopId, String sku,
                                                             String month, PageQuery input) {
-        // 与图表口径保持一致：下钻行同样受店铺 / 费用分组 / 月份 / 货号过滤。
+        // 与图表口径保持一致：下钻行同样受店铺 / 月份 / 货号过滤。
         // 单货号单月最多 3.5 万行，所以这里必须后端分页，不能像交货图表那样一次返回。
         // 前端「未标注货号」下发的是哨兵值（空串会被 tansParams 丢弃），这里翻译成空串再进 SQL。
         String skuFilter = NO_SKU_TOKEN.equals(sku) ? "" : sku;
@@ -225,7 +231,7 @@ public class OzonReportServiceImpl implements IOzonReportService {
         if ("shopName".equals(rowSort)) rowSort = "shopId";
         page.addOrder(order(rowSort, ascending(input)));
         page.addOrder(OrderItem.desc("row_id"));
-        Page<OzonAccrualReportVo> result = accrualMapper.selectChartRows(page, scopeShopId, serviceGroup, skuFilter, month);
+        Page<OzonAccrualReportVo> result = accrualMapper.selectChartRows(page, scopeShopId, skuFilter, month);
         fillShopNames(result.getRecords());
         return PageResult.build(result.getRecords(), result.getTotal());
     }
@@ -234,7 +240,7 @@ public class OzonReportServiceImpl implements IOzonReportService {
     public OzonSummaryChartVo summaryChart(Long scopeShopId, String month) {
         // 汇总页把三个主题的汇总并在一起，口径与各自的图表页保持一致：
         // 三个主题各自「按月趋势」不带月份筛选（看全貌），「按货号排行」带月份筛选。
-        // 汇总页不提供各主题的原生筛选（交货状态 / 费用分组 / 退货状态）。其中交货侧固定按「已完成」统计
+        // 汇总页不提供各主题的原生筛选（交货状态 / 退货状态）。其中交货侧固定按「已完成」统计
         // （与「0.1.交货图表」的默认状态一致，见 SUPPLY_DONE_STATUS），退货按全量口径。
         // 订单侧展示「售出件数」而不是应计金额，数据源是产品月报的 sold_units：应计明细是按「费用」铺开的
         // （一笔销售横跨「销售收入 / 佣金 / 折扣积分 / 物流…」七八行，还混着大量与卖货无关的服务费单据），
