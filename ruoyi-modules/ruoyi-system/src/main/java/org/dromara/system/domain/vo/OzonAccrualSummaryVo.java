@@ -5,10 +5,15 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
-/** 按应计费用编号归集的完整正负金额。 */
+/**
+ * 订单费用明细列表的一行 = 一条应计费用明细（店铺 × 应计费用编号）。
+ * 数据来自**蒸馏表** {@code ozon_accrual_summary}（由 {@code ozon_accruals} 38.6 万行聚合成 7.6 万行，
+ * 重建见 scripts/refresh_ozon_accrual_summary.py 与 mysql/10_ozon_accrual_summary.sql），
+ * 不再对原始明细表做 GROUP BY。
+ */
 @Data
 public class OzonAccrualSummaryVo implements Serializable {
-    /** 组内最小记录编号，空费用编号时用于唯一定位。 */
+    /** 组内最小记录编号（蒸馏表的 min_row_id），空费用编号时用于唯一定位。 */
     private String rowId;
     /** 店铺 → shop.id。 */
     private Long shopId;

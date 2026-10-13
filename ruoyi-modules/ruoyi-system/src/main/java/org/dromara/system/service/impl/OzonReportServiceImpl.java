@@ -20,7 +20,6 @@ import java.math.BigDecimal;
 import java.util.Set;
 import java.util.Map;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -110,8 +109,10 @@ public class OzonReportServiceImpl implements IOzonReportService {
         if ("shopName".equals(summarySort)) summarySort = "shopId";
         page.addOrder(order(summarySort, ascending(input)));
         page.addOrder(OrderItem.desc("row_id"));
+        // 读的是**蒸馏表** ozon_accrual_summary（一行 = 一条应计费用明细 = 店铺×应计费用编号，
+        // 由 scripts/ozon_accruals_daily_sync.py 每次入库后重建）。原先每次都拿 ozon_accruals
+        // 38.6 万行做 GROUP BY + 一次额外的商品名补查，翻页 ≈0.9s；现在是一次索引扫描。
         Page<OzonAccrualSummaryVo> result = accrualMapper.selectSummary(page, q);
-        fillProductNames(result.getRecords());
         return PageResult.build(result.getRecords(), result.getTotal());
     }
 
@@ -370,32 +371,6 @@ public class OzonReportServiceImpl implements IOzonReportService {
         page.addOrder(OrderItem.desc("report_month"));
         Page<OzonReturnsReportVo> result = returnsReportMapper.selectReportPage(page, w);
         return PageResult.build(result.getRecords(), result.getTotal());
-    }
-
-    /** 仅对当前页批量查商品名，避免GROUP_CONCAT长度限制截断多商品名称；按店铺 + 费用编号归集。 */
-    private void fillProductNames(List<OzonAccrualSummaryVo> rows) {
-        if (rows.isEmpty()) return;
-        var ids = rows.stream().map(OzonAccrualSummaryVo::getAccrualId).toList();
-        var query = QueryBuilder.lambda(OzonAccrualReport.class).build();
-        query.select(OzonAccrualReport::getShopId, OzonAccrualReport::getAccrualId, OzonAccrualReport::getProductName)
-            .in(OzonAccrualReport::getAccrualId, ids)
-            .isNotNull(OzonAccrualReport::getProductName)
-            .groupBy(OzonAccrualReport::getShopId, OzonAccrualReport::getAccrualId, OzonAccrualReport::getProductName)
-            .orderByAsc(OzonAccrualReport::getProductName);
-        Map<String, Set<String>> names = new HashMap<>();
-        for (OzonAccrualReport row : accrualMapper.selectList(query)) {
-            if (StringUtils.isNotBlank(row.getProductName())) {
-                names.computeIfAbsent(shopKey(row.getShopId(), row.getAccrualId()), key -> new LinkedHashSet<>()).add(row.getProductName().trim());
-            }
-        }
-        for (OzonAccrualSummaryVo row : rows) {
-            row.setProductName(String.join(" / ", names.getOrDefault(shopKey(row.getShopId(), row.getAccrualId()), Set.of())));
-        }
-    }
-
-    /** 用店铺 + 费用编号定位一组应计记录。 */
-    private static String shopKey(Long shopId, String accrualId) {
-        return shopId + ":" + accrualId;
     }
 
     /** 明细为只读实体查询，店铺名按 shop 表回填。 */
