@@ -25,27 +25,37 @@ public interface OzonAccrualReportMapper extends BaseMapperPlus<OzonAccrualRepor
     List<OzonProductSaleVo> selectSalesTransactions(@Param("q") OzonReportQuery query);
 
     /**
-     * 订单图表下钻：某个卖家货号（或某个月份）下的订单费用原始明细行，分页返回。
-     * 单货号单月最多 3.5 万行，必须后端分页，不能一次性返回。
-     * sku 为 null 表示不过滤；sku 为空串表示只看「没有卖家货号」的明细。
+     * 订单图表下钻：某个卖家货号 / 某个月份下的**单个应计项目**列表，后端分页。
+     * 一行 = 一条应计费用编号（在该月、该货号上的那部分费用），不再是原始费用行。
      * <p>
-     * ⚠️ 这里读的是**源表** ozon_accruals，不是蒸馏表 ozon_accrual_summary：下钻要的是
-     * 「逐条费用」的原始行，而蒸馏表一行 = 一条应计费用编号（已按编号合并），粒度不同。
-     * 图表上方的按月趋势与按货号排行另走产品月报（见 OzonMonthlyReportMapper）。
+     * 数据源是下钻预聚合表 {@code ozon_accrual_item}（粒度 店铺 × 应计月 × 卖家货号 × 编号，
+     * 见 mysql/16_ozon_accrual_item.sql）。为什么不用蒸馏表 {@code ozon_accrual_summary}：
+     * <ul>
+     *   <li>蒸馏表没有「月份」「货号」两维，一个编号可能跨月（实测 205 个），
+     *       直接用它下钻会让「弹窗合计 ≠ 柱高」；</li>
+     *   <li>蒸馏表只收 accrual_id 非空的行，会漏掉 133 行无编号费用（合计 -261,384.50，
+     *       全在「未标注货号」柱里），那根柱子会差一半。</li>
+     * </ul>
+     * 该表按与图表完全相同的粒度预聚合，所以弹窗的「净额合计」严格等于柱高。
+     * <p>
+     * sku 为 null 表示不按货号过滤；sku 为空串表示只看「未标注货号」；month 为空表示不限月份。
+     * accrual_id 为空串的行 = 「该月该货号下没有编号的费用」合成项，前端显示「（无编号）」。
      */
     @Select("""
         <script>
-        SELECT a.row_id, a.shop_id, a.accrual_id, a.accrual_date, a.service_group, a.accrual_type,
-               a.seller_sku, a.ozon_sku, a.product_name, a.quantity, a.total_amount_rub
-        FROM ozon_accruals a
+        SELECT i.min_row_id AS row_id, i.accrual_id, i.shop_id, i.stat_month, i.seller_sku,
+               i.product_name, i.first_accrual_date, i.accrual_date,
+               i.positive_amount_rub, i.negative_amount_rub, i.total_amount_rub,
+               i.after_tax_amount_rub, i.total_amount_cny, i.record_count
+        FROM ozon_accrual_item i
         <where>
-          <if test="shopId != null">a.shop_id = #{shopId}</if>
-          <if test="month != null and month != ''">AND DATE_FORMAT(a.accrual_date, '%Y-%m') = #{month}</if>
-          <if test="sku != null">AND COALESCE(NULLIF(TRIM(a.seller_sku), ''), '') = #{sku}</if>
+          <if test="shopId != null">i.shop_id = #{shopId}</if>
+          <if test="month != null and month != ''">AND i.stat_month = #{month}</if>
+          <if test="sku != null">AND i.seller_sku = #{sku}</if>
         </where>
         </script>
         """)
-    Page<OzonAccrualReportVo> selectChartRows(Page<OzonAccrualReportVo> page,
+    Page<OzonAccrualSummaryVo> selectChartRows(Page<OzonAccrualSummaryVo> page,
                                              @Param("shopId") Long shopId,
                                              @Param("sku") String sku,
                                              @Param("month") String month);

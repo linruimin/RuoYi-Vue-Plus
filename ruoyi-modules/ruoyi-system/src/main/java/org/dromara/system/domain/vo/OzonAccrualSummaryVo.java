@@ -39,4 +39,8 @@ public class OzonAccrualSummaryVo implements Serializable {
     private BigDecimal totalAmountCny;
     /** 原始明细行数。 */
     private Long recordCount;
+    /** 应计月份 YYYY-MM。仅「1.1.订单图表」下钻（读 ozon_accrual_item）时有值。 */
+    private String statMonth;
+    /** 卖家货号（TRIM 后；空串 = 「未标注货号」）。仅「1.1.订单图表」下钻时有值。 */
+    private String sellerSku;
 }

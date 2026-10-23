@@ -37,8 +37,11 @@ public interface IOzonReportService {
     /** 订单图表：按月趋势 + 按货号排行（金额＝总计 RUB 净额），一次查询保证口径一致；数据来自产品月报。 */
     OzonAccrualChartVo accrualChart(Long scopeShopId, String month);
 
-    /** 订单图表下钻：某个卖家货号或某个月份下的订单费用原始明细行，后端分页返回。 */
-    PageResult<OzonAccrualReportVo> accrualChartRows(Long scopeShopId, String sku, String month, PageQuery page);
+    /**
+     * 订单图表下钻：某个卖家货号或某个月份下的**单个应计项目**列表（一行 = 一条应计费用编号），后端分页。
+     * 读下钻预聚合表 ozon_accrual_item，粒度与图表柱子相同 → 弹窗「净额合计」严格等于柱高。
+     */
+    PageResult<OzonAccrualSummaryVo> accrualChartRows(Long scopeShopId, String sku, String month, PageQuery page);
 
     /**
      * 汇总图表：把交货 / 订单 / 退货三个主题的月度与货号汇总并到一起，一次查询保证口径一致。

@@ -50,6 +50,14 @@ public class OzonReportServiceImpl implements IOzonReportService {
         "accrualType", "sellerSku", "ozonSku", "productName", "quantity", "sellerPriceRub",
         "orderAcceptedOrServiceDate", "salesPlatform", "fulfillmentScheme", "ozonCommissionPct",
         "localizationIndexPct", "averageDeliveryTimeHours", "totalAmountRub", "importedAt");
+    /**
+     * 「1.1.订单图表」下钻（一行 = 一个应计项目）的排序白名单。
+     * 与 LINE_SORT 不同：下钻读的是 ozon_accrual_item，没有费用分组/应计类型/数量这些列。
+     */
+    private static final Set<String> ITEM_SORT = Set.of("rowId", "accrualId", "shopId", "shopName",
+        "statMonth", "sellerSku", "productName", "accrualDate", "firstAccrualDate", "recordCount",
+        "positiveAmountRub", "negativeAmountRub", "totalAmountRub", "afterTaxAmountRub",
+        "totalAmountCny");
     private static final Set<String> SUPPLY_SORT = Set.of("id", "orderId", "applicationNo", "deliveryType",
         "status", "shipmentDate", "shipmentTime", "storageCluster", "dispatchPoint", "completionDate",
         "deliveryId", "productName", "localProductName", "itemCode", "sku", "liquidity", "quantity", "volume");
@@ -220,19 +228,20 @@ public class OzonReportServiceImpl implements IOzonReportService {
     }
 
     @Override
-    public PageResult<OzonAccrualReportVo> accrualChartRows(Long scopeShopId, String sku,
-                                                            String month, PageQuery input) {
-        // 与图表口径保持一致：下钻行同样受店铺 / 月份 / 货号过滤。
-        // 单货号单月最多 3.5 万行，所以这里必须后端分页，不能像交货图表那样一次返回。
+    public PageResult<OzonAccrualSummaryVo> accrualChartRows(Long scopeShopId, String sku,
+                                                             String month, PageQuery input) {
+        // 与图表口径保持一致：下钻同样受店铺 / 月份 / 货号过滤。
+        // 数据源是下钻预聚合表 ozon_accrual_item（一行 = 一个应计项目在该月该货号上的费用），
+        // 粒度与图表柱子完全相同，所以弹窗的「净额合计」严格等于柱高。
         // 前端「未标注货号」下发的是哨兵值（空串会被 tansParams 丢弃），这里翻译成空串再进 SQL。
         String skuFilter = NO_SKU_TOKEN.equals(sku) ? "" : sku;
-        Page<OzonAccrualReportVo> page = boundedPage(input);
-        String rowSort = sortField(input, LINE_SORT, "accrualDate");
+        Page<OzonAccrualSummaryVo> page = boundedPage(input);
+        String rowSort = sortField(input, ITEM_SORT, "accrualDate");
         if ("shopName".equals(rowSort)) rowSort = "shopId";
         page.addOrder(order(rowSort, ascending(input)));
         page.addOrder(OrderItem.desc("row_id"));
-        Page<OzonAccrualReportVo> result = accrualMapper.selectChartRows(page, scopeShopId, skuFilter, month);
-        fillShopNames(result.getRecords());
+        Page<OzonAccrualSummaryVo> result = accrualMapper.selectChartRows(page, scopeShopId, skuFilter, month);
+        fillSummaryShopNames(result.getRecords());
         return PageResult.build(result.getRecords(), result.getTotal());
     }
 
@@ -393,6 +402,15 @@ public class OzonReportServiceImpl implements IOzonReportService {
         if (rows.isEmpty()) return;
         Map<Long, String> names = shopNames();
         for (OzonMonthlyReportVo row : rows) {
+            row.setShopName(names.get(row.getShopId()));
+        }
+    }
+
+    /** 订单图表下钻（应计项目）的店铺名。 */
+    private void fillSummaryShopNames(List<OzonAccrualSummaryVo> rows) {
+        if (rows.isEmpty()) return;
+        Map<Long, String> names = shopNames();
+        for (OzonAccrualSummaryVo row : rows) {
             row.setShopName(names.get(row.getShopId()));
         }
     }
