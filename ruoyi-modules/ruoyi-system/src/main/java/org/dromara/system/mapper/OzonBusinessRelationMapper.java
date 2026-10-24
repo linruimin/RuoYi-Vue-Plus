@@ -14,7 +14,7 @@ public interface OzonBusinessRelationMapper {
 @Select("SELECT COUNT(*) FROM ${table} WHERE feishu_record_id=#{source}") Long sourceCount(@Param("table") String table,@Param("source") String source);
 @Select("SELECT GROUP_CONCAT(CONCAT(COALESCE(f.fee_no,f.id),' · ',COALESCE(f.fee_type,'')) ORDER BY f.id SEPARATOR '、') FROM shipment_logistics_fee x JOIN logistics_fee f ON f.id=x.logistics_fee_id WHERE x.shipment_id=#{id}")
 String feeLabels(Long id);
-@Select("SELECT GROUP_CONCAT(CONCAT(COALESCE(s.shipment_no,s.id),' · ',p.order_no) ORDER BY s.id SEPARATOR '、') FROM shipment_logistics_fee x JOIN shipment s ON s.id=x.shipment_id JOIN purchase_order p ON p.id=s.purchase_id WHERE x.logistics_fee_id=#{id}")
+@Select("SELECT GROUP_CONCAT(COALESCE(s.shipment_no,s.id) ORDER BY s.id SEPARATOR '、') FROM shipment_logistics_fee x JOIN shipment s ON s.id=x.shipment_id WHERE x.logistics_fee_id=#{id}")
 String shipmentLabels(Long id);
 @Select("SELECT id FROM ${table} WHERE feishu_record_id=#{source} FOR UPDATE")
 Long lockSource(@Param("table") String table,@Param("source") String source);
