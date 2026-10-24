@@ -54,11 +54,12 @@ options.put("shipment.logisticsMethod",Set.of("立德","超光速","贝加尔","
 options.put("shipment.goodsStatus",Set.of("商家仓库","林灼工作室","工作室仓库","国内运输","物流仓库","跨境运输","俄罗斯仓库","ozon官方仓"));
 links.add(new Link("shipment","purchase_id","purchase_order"));
 links.add(new Link("shipment","shop_id","shop"));
-columns.put("logistics_fee",Map.ofEntries(Map.entry("id","b.`id`"),Map.entry("feeNo","b.`fee_no`"),Map.entry("feeType","b.`fee_type`"),Map.entry("amount","b.`amount`"),Map.entry("paidFlag","b.`paid_flag`"),Map.entry("feeDate","b.`fee_date`"),Map.entry("shopId","b.`shop_id`"),Map.entry("remark","b.`remark`"),Map.entry("createdAt","b.`created_at`"),Map.entry("updatedAt","b.`updated_at`"),Map.entry("calc0","v.`总重量`"),Map.entry("calc1","v.`总体积`"),Map.entry("calc2","v.`单体积费用`"),Map.entry("calc3","v.`单重量费用`")));
+columns.put("logistics_fee",Map.ofEntries(Map.entry("id","b.`id`"),Map.entry("feeNo","b.`fee_no`"),Map.entry("feeType","b.`fee_type`"),Map.entry("amount","b.`amount`"),Map.entry("paidFlag","b.`paid_flag`"),Map.entry("feeDate","b.`fee_date`"),Map.entry("shopId","b.`shop_id`"),Map.entry("remark","b.`remark`"),Map.entry("logisticsMethod","v.`物流方式`"),Map.entry("createdAt","b.`created_at`"),Map.entry("updatedAt","b.`updated_at`"),Map.entry("calc0","v.`总重量`"),Map.entry("calc1","v.`总体积`"),Map.entry("calc2","v.`单体积费用`"),Map.entry("calc3","v.`单重量费用`")));
 numeric.put("logistics_fee",Set.of("id","feeNo","amount","shopId","calc0","calc1","calc2","calc3"));
 dates.put("logistics_fee",Set.of("feeDate","createdAt","updatedAt"));
 options.put("logistics_fee.feeType",Set.of("国内运输","跨境运输","入仓送仓","跨境取货送仓","边境带货"));
 options.put("logistics_fee.paidFlag",Set.of("已付","未付"));
+options.put("logistics_fee.logisticsMethod",Set.of("立德","超光速","贝加尔","跨境店","边境带货"));
 links.add(new Link("logistics_fee","shop_id","shop"));
 columns.put("other_fee",Map.ofEntries(Map.entry("id","b.`id`"),Map.entry("feeNo","b.`fee_no`"),Map.entry("feeType","b.`fee_type`"),Map.entry("amount","b.`amount`"),Map.entry("feeDate","b.`fee_date`"),Map.entry("shopId","b.`shop_id`"),Map.entry("remark","b.`remark`"),Map.entry("createdAt","b.`created_at`"),Map.entry("updatedAt","b.`updated_at`")));
 numeric.put("other_fee",Set.of("id","feeNo","amount","shopId"));
@@ -191,11 +192,13 @@ auto.putAll(Map.of("product","product_no","replenishment","replenish_no","shipme
   String col=cols.get(field);
   boolean numericField=numeric.get(t)!=null&&numeric.get(t).contains(field);
   boolean dateField=dates.get(t)!=null&&dates.get(t).contains(field);
+  // 多值 lookup（物流费用的「物流方式」如 "超光速,立德"）：「是/不是」按逗号分词匹配，否则组合值永远不相等。
+  boolean multiValueField="logistics_fee".equals(t)&&"logisticsMethod".equals(field);
   switch(op){
    case "isEmpty" -> { if(numericField||dateField)w.isNull(col); else w.and(x->x.isNull(col).or().eq(col,"")); }
    case "isNotEmpty" -> { if(numericField||dateField)w.isNotNull(col); else w.and(x->x.isNotNull(col).ne(col,"")); }
-   case "is" -> w.eq(col,conditionValue(value,numericField&&!dateField));
-   case "isNot" -> w.ne(col,conditionValue(value,numericField&&!dateField));
+   case "is" -> { if(multiValueField)w.apply("FIND_IN_SET({0}, REPLACE("+col+",' ',''))",value); else w.eq(col,conditionValue(value,numericField&&!dateField)); }
+   case "isNot" -> { if(multiValueField)w.apply("COALESCE(FIND_IN_SET({0}, REPLACE("+col+",' ','')),0)=0",value); else w.ne(col,conditionValue(value,numericField&&!dateField)); }
    case "contains" -> w.like(col,value);
    case "notContains" -> w.notLike(col,value);
    case "gt" -> w.gt(col,conditionValue(value,numericField&&!dateField));

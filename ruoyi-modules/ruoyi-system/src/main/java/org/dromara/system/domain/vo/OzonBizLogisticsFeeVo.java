@@ -30,6 +30,8 @@ private String remark;
 private LocalDateTime createdAt;
 /** 更新时间。 */
 private LocalDateTime updatedAt;
+/** 物流方式（只读，lookup 关联出货；多选出货时英文逗号拼接，如 "超光速,立德"）。 */
+private String logisticsMethod;
 /** 总重量（只读）。 */
 private BigDecimal calc0;
 /** 总体积（只读）。 */
