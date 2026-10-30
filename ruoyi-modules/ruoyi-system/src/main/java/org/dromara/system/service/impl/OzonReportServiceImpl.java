@@ -469,4 +469,187 @@ public class OzonReportServiceImpl implements IOzonReportService {
         safe.setPageSize(input.getPageSize() == null ? 20 : Math.max(1, Math.min(100, input.getPageSize())));
         return safe.build();
     }
+
+    // ==================== 2.2 退货成本 ====================
+
+    /** 应计里的退货成本科目（金额为负，展示时取绝对值）。 */
+    private static final String COST_REVERSE_LOGISTICS = "逆向物流";
+    private static final String COST_HANDLING = "合作伙伴处理退货、取消和拒收";
+    private static final String COST_PICKUP = "PickUpPointReturnAcceptance";
+    private static final String COST_REVENUE_REFUND = "收入退回";
+    private static final String COST_COMMISSION_REFUND = "佣金返还";
+
+    @Override
+    public OzonReturnsCostVo returnsCost(Long scopeShopId, String status, String month) {
+        // 退货侧是「未完结退货快照」，应计侧是历史累计，两者没有货件号可勾稽：
+        // 只能按「店铺 + 卖家货号 + 订单日期」把应计金额均摊到该组的退货单上。
+        // 订单日期为空的应计行无法归属，单独计入「未分摊」，不计入单均成本。
+        Map<String, Object> returnSummary = returnsReportMapper.selectCostReturnSummary(scopeShopId, status, month);
+        List<Map<String, Object>> accrualTotals = returnsReportMapper.selectCostAccrualTotals(scopeShopId, month);
+        List<Map<String, Object>> accrualGroups = returnsReportMapper.selectCostAccrualGroups(scopeShopId, month);
+        List<Map<String, Object>> returnGroups = returnsReportMapper.selectCostReturnGroups(scopeShopId, status, month);
+        List<OzonReturnsCostVo.CostRow> rows = returnsReportMapper.selectCostRows(scopeShopId, status, month);
+
+        Map<String, Integer> groupCounts = new HashMap<>();
+        for (Map<String, Object> group : returnGroups) {
+            groupCounts.put(costKey(group.get("shopId"), group.get("articleNo"), group.get("orderDate")),
+                costInt(group.get("cnt")));
+        }
+
+        Map<String, Map<String, BigDecimal>> groupCosts = new HashMap<>();
+        int unmappedCount = 0;
+        for (Map<String, Object> group : accrualGroups) {
+            BigDecimal amount = costDec(group.get("amount")).abs();
+            String key = costKey(group.get("shopId"), group.get("articleNo"), group.get("orderDate"));
+            Integer count = groupCounts.get(key);
+            if (count == null || count <= 0) {
+                unmappedCount += costInt(group.get("cnt"));
+                continue;
+            }
+            groupCosts.computeIfAbsent(key, ignored -> new HashMap<>())
+                .merge(String.valueOf(group.get("accrualType")), amount, BigDecimal::add);
+        }
+
+        // 应计总额（三项成本的真实出账金额）；分摊只决定「落到哪张单」，不改变总额。
+        BigDecimal accrueReverse = BigDecimal.ZERO;
+        BigDecimal accrueHandling = BigDecimal.ZERO;
+        BigDecimal accruePickup = BigDecimal.ZERO;
+        for (Map<String, Object> total : accrualTotals) {
+            String type = String.valueOf(total.get("accrualType"));
+            BigDecimal amount = costDec(total.get("amount")).abs();
+            if (COST_REVERSE_LOGISTICS.equals(type)) accrueReverse = accrueReverse.add(amount);
+            if (COST_HANDLING.equals(type)) accrueHandling = accrueHandling.add(amount);
+            if (COST_PICKUP.equals(type)) accruePickup = accruePickup.add(amount);
+        }
+
+        for (OzonReturnsCostVo.CostRow row : rows) {
+            String key = costKey(row.getShopId(), row.getArticleNo(), row.getOrderDate());
+            Integer count = groupCounts.get(key);
+            Map<String, BigDecimal> costs = groupCosts.get(key);
+            BigDecimal reverse = BigDecimal.ZERO;
+            BigDecimal handling = BigDecimal.ZERO;
+            BigDecimal pickup = BigDecimal.ZERO;
+            if (costs != null && count != null && count > 0) {
+                reverse = costShare(costs.get(COST_REVERSE_LOGISTICS), count);
+                handling = costShare(costs.get(COST_HANDLING), count);
+                pickup = costShare(costs.get(COST_PICKUP), count);
+            }
+            row.setReverseLogisticsRub(reverse);
+            row.setHandlingFeeRub(handling);
+            row.setPickupFeeRub(pickup);
+            row.setCostTotalRub(reverse.add(handling).add(pickup));
+        }
+
+        BigDecimal allocatedTotal = BigDecimal.ZERO;
+        for (OzonReturnsCostVo.CostRow row : rows) {
+            allocatedTotal = allocatedTotal.add(row.getCostTotalRub());
+        }
+
+        OzonReturnsCostVo.Summary summary = new OzonReturnsCostVo.Summary();
+        summary.setShipmentCount(costInt(returnSummary.get("shipmentCount")));
+        summary.setReturnQty(costInt(returnSummary.get("returnQty")));
+        summary.setGoodsValueRub(costDec(returnSummary.get("goodsValueRub")).setScale(2, java.math.RoundingMode.HALF_UP));
+        summary.setStorageFeeRub(costDec(returnSummary.get("storageFeeRub")).setScale(2, java.math.RoundingMode.HALF_UP));
+        summary.setDisposalFeeRub(costDec(returnSummary.get("disposalFeeRub")).setScale(2, java.math.RoundingMode.HALF_UP));
+        summary.setReverseLogisticsRub(accrueReverse.setScale(2, java.math.RoundingMode.HALF_UP));
+        summary.setHandlingFeeRub(accrueHandling.setScale(2, java.math.RoundingMode.HALF_UP));
+        summary.setPickupFeeRub(accruePickup.setScale(2, java.math.RoundingMode.HALF_UP));
+        BigDecimal costTotal = accrueReverse.add(accrueHandling).add(accruePickup);
+        summary.setCostTotalRub(costTotal.setScale(2, java.math.RoundingMode.HALF_UP));
+        int shipments = summary.getShipmentCount() == null ? 0 : summary.getShipmentCount();
+        summary.setCostPerShipmentRub(shipments > 0
+            ? costTotal.divide(BigDecimal.valueOf(shipments), 2, java.math.RoundingMode.HALF_UP)
+            : BigDecimal.ZERO);
+        BigDecimal goodsValue = summary.getGoodsValueRub();
+        summary.setCostRatePct(goodsValue != null && goodsValue.compareTo(BigDecimal.ZERO) > 0
+            ? costTotal.multiply(BigDecimal.valueOf(100)).divide(goodsValue, 2, java.math.RoundingMode.HALF_UP)
+            : BigDecimal.ZERO);
+        BigDecimal revenueRefund = BigDecimal.ZERO;
+        BigDecimal commissionRefund = BigDecimal.ZERO;
+        for (Map<String, Object> total : accrualTotals) {
+            String type = String.valueOf(total.get("accrualType"));
+            BigDecimal amount = costDec(total.get("amount")).setScale(2, java.math.RoundingMode.HALF_UP);
+            if (COST_REVENUE_REFUND.equals(type)) revenueRefund = revenueRefund.add(amount);
+            if (COST_COMMISSION_REFUND.equals(type)) commissionRefund = commissionRefund.add(amount);
+        }
+        summary.setRevenueRefundRub(revenueRefund);
+        summary.setCommissionRefundRub(commissionRefund);
+        BigDecimal unmappedResidual = costTotal.subtract(allocatedTotal);
+        summary.setUnmappedCount(unmappedCount);
+        summary.setUnmappedCostRub(unmappedResidual.max(BigDecimal.ZERO).setScale(2, java.math.RoundingMode.HALF_UP));
+
+        // 按卖家货号归并（明细成本合计 = 汇总成本，两者一定相等）
+        Map<String, OzonReturnsCostVo.ArticleStat> articleMap = new LinkedHashMap<>();
+        for (OzonReturnsCostVo.CostRow row : rows) {
+            String key = row.getArticleNo() == null ? "" : row.getArticleNo();
+            OzonReturnsCostVo.ArticleStat article = articleMap.get(key);
+            if (article == null) {
+                article = new OzonReturnsCostVo.ArticleStat();
+                article.setArticleNo(row.getArticleNo());
+                article.setProductName(row.getProductName());
+                article.setImageUrl(row.getImageUrl());
+                article.setShipmentCount(0);
+                article.setReturnQty(0);
+                article.setReverseLogisticsRub(BigDecimal.ZERO);
+                article.setHandlingFeeRub(BigDecimal.ZERO);
+                article.setPickupFeeRub(BigDecimal.ZERO);
+                articleMap.put(key, article);
+            }
+            article.setShipmentCount(article.getShipmentCount() + 1);
+            article.setReturnQty(article.getReturnQty() + costInt(row.getReturnQty()));
+            article.setReverseLogisticsRub(article.getReverseLogisticsRub().add(row.getReverseLogisticsRub()));
+            article.setHandlingFeeRub(article.getHandlingFeeRub().add(row.getHandlingFeeRub()));
+            article.setPickupFeeRub(article.getPickupFeeRub().add(row.getPickupFeeRub()));
+        }
+        for (OzonReturnsCostVo.ArticleStat article : articleMap.values()) {
+            BigDecimal total = article.getReverseLogisticsRub()
+                .add(article.getHandlingFeeRub()).add(article.getPickupFeeRub());
+            article.setCostTotalRub(total.setScale(2, java.math.RoundingMode.HALF_UP));
+            article.setCostPerShipmentRub(article.getShipmentCount() > 0
+                ? total.divide(BigDecimal.valueOf(article.getShipmentCount()), 2, java.math.RoundingMode.HALF_UP)
+                : BigDecimal.ZERO);
+        }
+        List<OzonReturnsCostVo.ArticleStat> articles = new ArrayList<>(articleMap.values());
+        articles.sort((left, right) -> right.getCostTotalRub().compareTo(left.getCostTotalRub()));
+
+        OzonReturnsCostVo result = new OzonReturnsCostVo();
+        result.setSummary(summary);
+        result.setArticles(articles);
+        result.setRows(rows);
+        return result;
+    }
+
+    /** 分摊键：店铺 + 卖家货号 + 订单日期。 */
+    private static String costKey(Object shopId, Object articleNo, Object orderDate) {
+        return String.valueOf(shopId) + '|' + (articleNo == null ? "" : articleNo) + '|'
+            + (orderDate == null ? "" : orderDate);
+    }
+
+    /** 组内均摊：金额 / 组内退货单数，保留 2 位。 */
+    private static BigDecimal costShare(BigDecimal amount, int count) {
+        if (amount == null || count <= 0) return BigDecimal.ZERO;
+        return amount.divide(BigDecimal.valueOf(count), 2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static BigDecimal costDec(Object value) {
+        if (value == null) return BigDecimal.ZERO;
+        if (value instanceof BigDecimal decimal) return decimal;
+        if (value instanceof Number number) return new BigDecimal(number.toString());
+        try {
+            return new BigDecimal(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    private static int costInt(Object value) {
+        if (value == null) return 0;
+        if (value instanceof Number number) return number.intValue();
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
 }

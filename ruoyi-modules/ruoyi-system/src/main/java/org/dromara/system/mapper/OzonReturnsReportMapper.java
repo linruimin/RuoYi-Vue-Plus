@@ -8,6 +8,7 @@ import org.dromara.common.mybatis.core.mapper.BaseMapperPlus;
 import org.dromara.system.domain.OzonBizReturns;
 import org.dromara.system.domain.vo.OzonBizReturnsVo;
 import org.dromara.system.domain.vo.OzonReturnsChartVo;
+import org.dromara.system.domain.vo.OzonReturnsCostVo;
 import org.dromara.system.domain.vo.OzonReturnsReportVo;
 
 import java.util.List;
@@ -126,4 +127,123 @@ public interface OzonReturnsReportMapper extends BaseMapperPlus<OzonBizReturns, 
         """)
     List<OzonBizReturnsVo> selectChartRows(@Param("shopId") Long shopId, @Param("status") String status,
                                            @Param("month") String month, @Param("articleNo") String articleNo);
+
+    /**
+     * 退货成本：退货侧汇总（单数 / 件数 / 货值 / 仓储费 / 销毁费）。
+     * 店铺、状态、月份为空表示不过滤；月份按 return_date 归月，与「2.1 退货图表」「8 退货」一致。
+     */
+    @Select("""
+        <script>
+        SELECT COUNT(*) AS shipmentCount,
+               COALESCE(SUM(y.return_qty), 0) AS returnQty,
+               COALESCE(SUM(y.max_price_rub), 0) AS goodsValueRub,
+               COALESCE(SUM(y.storage_fee_rub), 0) AS storageFeeRub,
+               COALESCE(SUM(y.disposal_fee_rub), 0) AS disposalFeeRub
+        FROM ozon_returns y
+        WHERE y.return_date IS NOT NULL
+          <if test="shopId != null">AND y.shop_id = #{shopId}</if>
+          <if test="status != null and status != ''">AND y.return_status = #{status}</if>
+          <if test="month != null and month != ''">AND DATE_FORMAT(y.return_date, '%Y-%m') = #{month}</if>
+        </script>
+        """)
+    java.util.Map<String, Object> selectCostReturnSummary(@Param("shopId") Long shopId,
+                                                          @Param("status") String status,
+                                                          @Param("month") String month);
+
+    /**
+     * 退货成本：把退货单按「店铺 + 卖家货号 + 订单日期」分组计数，作为应计费用的分摊基数。
+     * 应计没有货件号，只能落到这个粒度上均摊。
+     */
+    @Select("""
+        <script>
+        SELECT y.shop_id AS shopId,
+               y.article_no AS articleNo,
+               DATE_FORMAT(y.order_date, '%Y-%m-%d') AS orderDate,
+               COUNT(*) AS cnt
+        FROM ozon_returns y
+        WHERE y.return_date IS NOT NULL
+          AND y.order_date IS NOT NULL
+          <if test="shopId != null">AND y.shop_id = #{shopId}</if>
+          <if test="status != null and status != ''">AND y.return_status = #{status}</if>
+          <if test="month != null and month != ''">AND DATE_FORMAT(y.return_date, '%Y-%m') = #{month}</if>
+        GROUP BY y.shop_id, y.article_no, DATE_FORMAT(y.order_date, '%Y-%m-%d')
+        </script>
+        """)
+    List<java.util.Map<String, Object>> selectCostReturnGroups(@Param("shopId") Long shopId,
+                                                               @Param("status") String status,
+                                                               @Param("month") String month);
+
+    /**
+     * 退货成本：应计侧按费用类型汇总（5 个退货相关科目，含销售侧冲销的收入退回 / 佣金返还）。
+     * 月份按 accrual_date（出账日期）过滤，与退货侧的 return_date 不是同一口径，页面已注明。
+     */
+    @Select("""
+        <script>
+        SELECT a.shop_id AS shopId, a.accrual_type AS accrualType,
+               COUNT(*) AS cnt, COALESCE(SUM(a.total_amount_rub), 0) AS amount
+        FROM ozon_accruals a
+        WHERE a.accrual_type IN ('逆向物流', '合作伙伴处理退货、取消和拒收', 'PickUpPointReturnAcceptance',
+                                 '收入退回', '佣金返还')
+          <if test="shopId != null">AND a.shop_id = #{shopId}</if>
+          <if test="month != null and month != ''">AND DATE_FORMAT(a.accrual_date, '%Y-%m') = #{month}</if>
+        GROUP BY a.shop_id, a.accrual_type
+        </script>
+        """)
+    List<java.util.Map<String, Object>> selectCostAccrualTotals(@Param("shopId") Long shopId,
+                                                                @Param("month") String month);
+
+    /**
+     * 退货成本：应计侧按「店铺 + 卖家货号 + 订单日期 + 科目」分组，供分摊到具体退货单。
+     * 订单日期为空的应计行无法归属，由 service 计入「未分摊」。
+     */
+    @Select("""
+        <script>
+        SELECT a.shop_id AS shopId, a.seller_sku AS articleNo,
+               DATE_FORMAT(a.order_accepted_or_service_date, '%Y-%m-%d') AS orderDate,
+               a.accrual_type AS accrualType,
+               COUNT(*) AS cnt, COALESCE(SUM(a.total_amount_rub), 0) AS amount
+        FROM ozon_accruals a
+        WHERE a.accrual_type IN ('逆向物流', '合作伙伴处理退货、取消和拒收', 'PickUpPointReturnAcceptance')
+          <if test="shopId != null">AND a.shop_id = #{shopId}</if>
+          <if test="month != null and month != ''">AND DATE_FORMAT(a.accrual_date, '%Y-%m') = #{month}</if>
+        GROUP BY a.shop_id, a.seller_sku,
+                 DATE_FORMAT(a.order_accepted_or_service_date, '%Y-%m-%d'), a.accrual_type
+        </script>
+        """)
+    List<java.util.Map<String, Object>> selectCostAccrualGroups(@Param("shopId") Long shopId,
+                                                                @Param("month") String month);
+
+    /**
+     * 退货成本明细：一行 = 一张退货单，带产品库中文名、货品图片与店铺名。
+     * 分摊成本由 service 按「货号 + 订单日」分组计算后回填，SQL 只负责取明细。
+     */
+    @Select("""
+        <script>
+        SELECT b.shop_id AS shopId, b.shipment_no AS shipmentNo, b.article_no AS articleNo, b.sku AS sku,
+               COALESCE(p_view.name, b.product_name) AS productName,
+               b.return_status AS returnStatus,
+               DATE_FORMAT(b.return_date, '%Y-%m-%d %H:%i:%s') AS returnDate,
+               DATE_FORMAT(b.status_date, '%Y-%m-%d %H:%i:%s') AS statusDate,
+               b.storage_days AS storageDays, b.return_qty AS returnQty,
+               b.storage_fee_rub AS storageFeeRub,
+               DATE_FORMAT(b.order_date, '%Y-%m-%d') AS orderDate,
+               r_shop.`name` AS shopName,
+               (SELECT a.cos_url FROM attachment a
+                 WHERE a.source_table='product' AND a.feishu_record_id=p_view.feishu_record_id
+                   AND a.field_name='货品图片' AND a.cos_url IS NOT NULL AND a.cos_url != ''
+                 ORDER BY a.id LIMIT 1) AS imageUrl
+        FROM ozon_returns b
+        LEFT JOIN product p_view ON p_view.id = (SELECT MIN(p2.id) FROM product p2 WHERE p2.article_no = b.article_no)
+        LEFT JOIN shop r_shop ON r_shop.id = b.shop_id
+        WHERE b.return_date IS NOT NULL
+          <if test="shopId != null">AND b.shop_id = #{shopId}</if>
+          <if test="status != null and status != ''">AND b.return_status = #{status}</if>
+          <if test="month != null and month != ''">AND DATE_FORMAT(b.return_date, '%Y-%m') = #{month}</if>
+        ORDER BY b.return_date DESC, b.row_id DESC
+        </script>
+        """)
+    List<OzonReturnsCostVo.CostRow> selectCostRows(@Param("shopId") Long shopId,
+                                                   @Param("status") String status,
+                                                   @Param("month") String month);
+
 }

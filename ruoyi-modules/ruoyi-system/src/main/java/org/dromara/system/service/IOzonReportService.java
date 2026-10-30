@@ -50,4 +50,12 @@ public interface IOzonReportService {
      * 「按月趋势」不受月份筛选影响，「按货号排行」受月份筛选影响；下钻明细复用各主题已有的下钻接口。
      */
     OzonSummaryChartVo summaryChart(Long scopeShopId, String month);
+
+    /**
+     * 退货成本：退货单与应计退货费用（逆向物流 / 退货处理 / 自提点受理）交叉汇总。
+     * 应计没有货件号，按「店铺 + 卖家货号 + 订单日期」分组后均摊到退货单；无订单日期的应计计入「未分摊」。
+     * 返回汇总卡片 + 按货号归并 + 逐单明细（明细成本 = 分摊值，合计与汇总一致）。
+     */
+    OzonReturnsCostVo returnsCost(Long scopeShopId, String status, String month);
+
 }

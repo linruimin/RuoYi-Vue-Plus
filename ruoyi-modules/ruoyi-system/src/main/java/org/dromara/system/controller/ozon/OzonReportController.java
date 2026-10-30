@@ -79,6 +79,18 @@ public class OzonReportController extends BaseController {
         return R.ok(reportService.returnsChartRows(scopeShopId, status, month, articleNo));
     }
 
+    /**
+     * 退货成本：退货单与应计退货费用（逆向物流 / 退货处理 / 自提点受理）交叉汇总。
+     * 应计没有货件号，按「店铺 + 卖家货号 + 订单日期」分组后均摊到退货单；无订单日期的应计计入「未分摊」。
+     */
+    @SaCheckPermission("ozon:report:list")
+    @GetMapping("/returns/cost")
+    public R<OzonReturnsCostVo> returnsCost(@RequestParam(required = false) Long scopeShopId,
+                                            @RequestParam(required = false) String status,
+                                            @RequestParam(required = false) String month) {
+        return R.ok(reportService.returnsCost(scopeShopId, status, month));
+    }
+
     /** 订单图表：按月趋势 + 按货号排行（金额＝总计 RUB 净额）；店铺 / 月份为空表示不过滤。数据来自产品月报。 */
     @SaCheckPermission("ozon:report:list")
     @GetMapping("/accruals/chart")
